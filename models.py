@@ -95,6 +95,38 @@ class UsageEvent(Base):
     )
 
 
+class Checklist(Base):
+    __tablename__ = "checklists"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("tracked_users.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_checked = Column(DateTime, nullable=True)
+
+    user = relationship("TrackedUser")
+    items = relationship("ChecklistItem", back_populates="checklist", cascade="all, delete-orphan")
+
+
+class ChecklistItem(Base):
+    __tablename__ = "checklist_items"
+
+    id = Column(Integer, primary_key=True)
+    checklist_id = Column(Integer, ForeignKey("checklists.id"), nullable=False)
+    article_title = Column(String(500), nullable=False)
+    wiki = Column(String(255), nullable=False, default="en.wikipedia.org")
+    expected_file = Column(String(500), default="")  # optional: specific file to check
+    status = Column(String(20), default="unchecked")  # unchecked, found, missing
+    last_checked = Column(DateTime, nullable=True)
+    found_files = Column(Text, default="")  # JSON array of matched filenames
+
+    checklist = relationship("Checklist", back_populates="items")
+
+    __table_args__ = (
+        Index("ix_checklist_items_checklist", "checklist_id"),
+    )
+
+
 def init_db(db_url="sqlite:///photopost.db"):
     engine = create_engine(db_url)
     Base.metadata.create_all(engine)

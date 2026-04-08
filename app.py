@@ -2,11 +2,12 @@
 
 import json
 import threading
+from datetime import datetime, timezone
 
 from flask import Flask, render_template, request, jsonify
 from sqlalchemy import func, case
 
-from models import init_db, TrackedUser, Photo, PhotoUsage, UsageEvent
+from models import init_db, TrackedUser, Photo, PhotoUsage, UsageEvent, Checklist, ChecklistItem
 from poller import poll_user, poll_progress
 from suggestions import suggest_articles_for_photo
 
@@ -413,6 +414,199 @@ def missing_languages(photo_id):
             'missing': deduped,
             'checked_articles': checked_articles,
             'total_missing': len(deduped),
+        })
+    finally:
+        db.close()
+
+
+# --- Checklists ---
+
+@app.route("/api/users/<int:user_id>/checklists", methods=["GET"])
+def list_checklists(user_id):
+    db = Session()
+    try:
+        checklists = db.query(Checklist).filter_by(user_id=user_id).order_by(Checklist.created_at.desc()).all()
+        return jsonify([{
+            "id": c.id,
+            "name": c.name,
+            "created_at": c.created_at.isoformat(),
+            "last_checked": c.last_checked.isoformat() if c.last_checked else None,
+            "item_count": len(c.items),
+            "found": sum(1 for i in c.items if i.status == "found"),
+            "missing": sum(1 for i in c.items if i.status == "missing"),
+        } for c in checklists])
+    finally:
+        db.close()
+
+
+@app.route("/api/users/<int:user_id>/checklists", methods=["POST"])
+def create_checklist(user_id):
+    """Create a checklist from uploaded article list.
+
+    Accepts JSON: { name, articles: [{title, wiki?}] }
+    Or a plain text list (one article per line, optional wiki prefix like "fr.wikipedia.org:Article Title")
+    """
+    db = Session()
+    try:
+        user = db.get(TrackedUser, user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        data = request.get_json()
+        name = data.get("name", "Checklist").strip()
+        raw_articles = data.get("articles", [])
+
+        if not raw_articles:
+            return jsonify({"error": "No articles provided"}), 400
+
+        checklist = Checklist(user_id=user_id, name=name)
+        db.add(checklist)
+        db.flush()
+
+        for entry in raw_articles:
+            if isinstance(entry, str):
+                # Parse "wiki:title" or just "title"
+                if ":" in entry and ".wikipedia.org" in entry.split(":")[0]:
+                    wiki, title = entry.split(":", 1)
+                    wiki = wiki.strip()
+                    title = title.strip()
+                else:
+                    wiki = "en.wikipedia.org"
+                    title = entry.strip()
+            else:
+                title = entry.get("title", "").strip()
+                wiki = entry.get("wiki", "en.wikipedia.org").strip()
+
+            if not title:
+                continue
+
+            item = ChecklistItem(
+                checklist_id=checklist.id,
+                article_title=title,
+                wiki=wiki,
+            )
+            db.add(item)
+
+        db.commit()
+        return jsonify({"id": checklist.id, "name": checklist.name, "items": len(checklist.items)}), 201
+    finally:
+        db.close()
+
+
+@app.route("/api/checklists/<int:checklist_id>", methods=["GET"])
+def get_checklist(checklist_id):
+    db = Session()
+    try:
+        cl = db.get(Checklist, checklist_id)
+        if not cl:
+            return jsonify({"error": "Checklist not found"}), 404
+        return jsonify({
+            "id": cl.id,
+            "user_id": cl.user_id,
+            "name": cl.name,
+            "created_at": cl.created_at.isoformat(),
+            "last_checked": cl.last_checked.isoformat() if cl.last_checked else None,
+            "items": [{
+                "id": i.id,
+                "article_title": i.article_title,
+                "wiki": i.wiki,
+                "expected_file": i.expected_file,
+                "status": i.status,
+                "last_checked": i.last_checked.isoformat() if i.last_checked else None,
+                "found_files": json.loads(i.found_files) if i.found_files else [],
+            } for i in cl.items],
+        })
+    finally:
+        db.close()
+
+
+@app.route("/api/checklists/<int:checklist_id>", methods=["DELETE"])
+def delete_checklist(checklist_id):
+    db = Session()
+    try:
+        cl = db.get(Checklist, checklist_id)
+        if not cl:
+            return jsonify({"error": "Not found"}), 404
+        db.delete(cl)
+        db.commit()
+        return jsonify({"ok": True})
+    finally:
+        db.close()
+
+
+@app.route("/api/checklists/<int:checklist_id>/check", methods=["POST"])
+def run_checklist(checklist_id):
+    """Live-check each article on the checklist against Wikipedia API.
+
+    For each article, fetches its images and checks if any of the tracked
+    user's photos appear.
+    """
+    import httpx
+
+    db = Session()
+    try:
+        cl = db.get(Checklist, checklist_id)
+        if not cl:
+            return jsonify({"error": "Not found"}), 404
+
+        user = db.get(TrackedUser, cl.user_id)
+        # Get all filenames for this user
+        user_files = set()
+        for p in db.query(Photo).filter_by(user_id=cl.user_id).all():
+            user_files.add(p.filename.replace("_", " "))
+            user_files.add(p.filename)
+
+        client = httpx.Client(
+            headers={"User-Agent": "PhotoPost/1.0"},
+            timeout=15.0,
+        )
+
+        now = datetime.now(timezone.utc)
+        results = []
+
+        for item in cl.items:
+            wiki = item.wiki
+            lang = wiki.replace(".wikipedia.org", "")
+            api_url = f"https://{wiki}/w/api.php"
+
+            try:
+                resp = client.get(api_url, params={
+                    "action": "query",
+                    "titles": item.article_title,
+                    "prop": "images",
+                    "imlimit": "500",
+                    "format": "json",
+                    "formatversion": "2",
+                })
+                data = resp.json()
+                pages = data.get("query", {}).get("pages", [])
+
+                article_images = set()
+                if pages and not pages[0].get("missing"):
+                    for img in pages[0].get("images", []):
+                        name = img.get("title", "").removeprefix("File:")
+                        article_images.add(name)
+                        article_images.add(name.replace(" ", "_"))
+
+                # Find which of the user's photos are on this article
+                matched = user_files & article_images
+                matched_list = sorted(set(f.replace(" ", "_") for f in matched))
+
+                item.status = "found" if matched_list else "missing"
+                item.found_files = json.dumps(matched_list)
+                item.last_checked = now
+
+            except Exception:
+                item.status = "error"
+                item.last_checked = now
+
+        cl.last_checked = now
+        db.commit()
+
+        return jsonify({
+            "checked": len(cl.items),
+            "found": sum(1 for i in cl.items if i.status == "found"),
+            "missing": sum(1 for i in cl.items if i.status == "missing"),
         })
     finally:
         db.close()

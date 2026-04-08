@@ -463,7 +463,7 @@ async function renderUserDetail() {
                     `).join('')}
                 </tbody>
             </table>`;
-    } else {
+    } else if (detailTab === 'events') {
         const eventsData = await api('api/users/'+id+'/events?limit=100');
         tabContent = `
             <table class="data-table">
@@ -489,6 +489,34 @@ async function renderUserDetail() {
                     `).join('')}
                 </tbody>
             </table>`;
+    } else if (detailTab === 'checklist-detail') {
+        tabContent = await renderChecklistDetail(id);
+    } else if (detailTab === 'checklists') {
+        const clData = await api('api/users/'+id+'/checklists');
+        tabContent = `
+            <div class="toolbar">
+                <textarea id="cl-articles" placeholder="Paste article list (one per line)&#10;Optional wiki prefix: fr.wikipedia.org:Titre de l'article" style="width:100%;height:100px;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;border-radius:4px;padding:8px;font-family:inherit;font-size:12px;resize:vertical"></textarea>
+            </div>
+            <div class="toolbar">
+                <input type="text" id="cl-name" placeholder="Checklist name..." style="width:200px" value="Checklist ${new Date().toLocaleDateString()}">
+                <button class="btn btn-primary" onclick="createChecklist(${id})">Create Checklist</button>
+            </div>
+            ${clData.length===0?'<div class="empty">No checklists yet. Paste a list of articles above.</div>':''}
+            ${clData.map(c => `
+                <div style="background:#161b22;border:1px solid #30363d;border-radius:6px;padding:10px 14px;margin-bottom:8px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span style="font-weight:600;cursor:pointer;color:#58a6ff" onclick="viewChecklist(${id},${c.id})">${esc(c.name)}</span>
+                        <span class="badge badge-blue">${c.item_count} articles</span>
+                        ${c.last_checked ? `<span class="badge badge-green">${c.found} found</span><span class="badge badge-red">${c.missing} missing</span>` : '<span class="badge badge-yellow">unchecked</span>'}
+                        <div style="flex:1"></div>
+                        <button class="btn btn-primary" onclick="runChecklist(${c.id})" style="font-size:11px">Check Now</button>
+                        <button class="btn" onclick="viewChecklist(${id},${c.id})" style="font-size:11px">View</button>
+                        <button class="btn btn-danger" onclick="deleteChecklist(${c.id})" style="font-size:11px">Delete</button>
+                    </div>
+                    ${c.last_checked ? '<div style="font-size:11px;color:#8b949e;margin-top:4px">Last checked: '+relTime(c.last_checked)+'</div>' : ''}
+                </div>
+            `).join('')}
+        `;
     }
 
     app.innerHTML = `
@@ -516,6 +544,7 @@ async function renderUserDetail() {
         <div class="tabs">
             <button class="tab ${detailTab==='photos'?'active':''}" onclick="detailTab='photos';render()">Photos</button>
             <button class="tab ${detailTab==='events'?'active':''}" onclick="detailTab='events';render()">Events</button>
+            <button class="tab ${detailTab==='checklists'||detailTab==='checklist-detail'?'active':''}" onclick="detailTab='checklists';render()">Checklists</button>
         </div>
         ${tabContent}
     `;
@@ -664,6 +693,83 @@ async function doSuggest() {
         } else box.innerHTML='<div style="color:#8b949e;margin-top:4px">No suggestions found</div>';
     } catch(e) { box.innerHTML='<div style="color:#f85149;margin-top:4px">Error</div>'; }
     finally { btn.style.display='none'; }
+}
+
+// ─── Checklists ───
+let checklistViewId = null;
+
+async function createChecklist(uid) {
+    const text = $('cl-articles')?.value?.trim();
+    const name = $('cl-name')?.value?.trim() || 'Checklist';
+    if (!text) { alert('Paste article list first'); return; }
+    const articles = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const r = await api('api/users/'+uid+'/checklists', {method:'POST', body:{name, articles}});
+    if (r.error) { alert(r.error); return; }
+    render();
+}
+
+async function runChecklist(clId) {
+    const r = await api('api/checklists/'+clId+'/check', {method:'POST'});
+    if (r.error) { alert(r.error); return; }
+    alert(`Checked ${r.checked} articles: ${r.found} found, ${r.missing} missing`);
+    render();
+}
+
+async function deleteChecklist(clId) {
+    if (!confirm('Delete this checklist?')) return;
+    await api('api/checklists/'+clId, {method:'DELETE'});
+    render();
+}
+
+async function viewChecklist(uid, clId) {
+    checklistViewId = clId;
+    detailTab = 'checklist-detail';
+    render();
+}
+
+async function renderChecklistDetail(id) {
+    const cl = await api('api/checklists/'+checklistViewId);
+    if (cl.error) return '<div class="empty">'+esc(cl.error)+'</div>';
+
+    const found = cl.items.filter(i => i.status==='found');
+    const missing = cl.items.filter(i => i.status==='missing');
+    const unchecked = cl.items.filter(i => i.status==='unchecked');
+
+    return `
+        <div class="toolbar">
+            <span style="font-weight:600">${esc(cl.name)}</span>
+            <span class="badge badge-blue">${cl.items.length} articles</span>
+            ${cl.last_checked ? `<span class="badge badge-green">${found.length} found</span><span class="badge badge-red">${missing.length} missing</span>` : ''}
+            <div style="flex:1"></div>
+            <button class="btn btn-primary" onclick="runChecklistAndRefresh(${checklistViewId})">Check Now</button>
+            <button class="btn" onclick="detailTab='checklists';render()">Back to Checklists</button>
+        </div>
+        <table class="data-table">
+            <thead><tr>
+                <th style="width:60px">Status</th>
+                <th>Article</th>
+                <th style="width:180px">Wiki</th>
+                <th>Photos Found</th>
+                <th style="width:100px">Checked</th>
+            </tr></thead>
+            <tbody>
+                ${cl.items.map(i => `
+                    <tr>
+                        <td><span class="badge ${i.status==='found'?'badge-green':i.status==='missing'?'badge-red':'badge-yellow'}">${i.status}</span></td>
+                        <td><a href="https://${esc(i.wiki)}/wiki/${encodeURIComponent(i.article_title)}" target="_blank" style="color:#58a6ff;text-decoration:none">${esc(i.article_title)}</a></td>
+                        <td class="muted">${esc(i.wiki)}</td>
+                        <td>${i.found_files.length>0 ? i.found_files.map(f=>'<span class="tag">'+esc(trunc(f,40))+'</span>').join(' ') : '<span class="muted">-</span>'}</td>
+                        <td class="muted">${i.last_checked?relTime(i.last_checked):'-'}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+async function runChecklistAndRefresh(clId) {
+    await api('api/checklists/'+clId+'/check', {method:'POST'});
+    render();
 }
 
 async function doMissingLangs() {
