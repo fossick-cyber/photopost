@@ -7,359 +7,286 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0f1117;
-            color: #e1e4eb;
-            line-height: 1.5;
+            font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
+            background: #0d1117;
+            color: #c9d1d9;
+            line-height: 1.4;
             min-height: 100vh;
+            font-size: 13px;
         }
 
-        /* Layout */
         header {
-            background: #1a1d27;
-            border-bottom: 1px solid #2a2d3a;
-            padding: 0.8rem 1.5rem;
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            padding: 8px 16px;
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: 12px;
             position: sticky;
             top: 0;
             z-index: 100;
         }
-        header h1 { font-size: 1.2rem; font-weight: 700; white-space: nowrap; }
-        header h1 span { color: #3b82f6; }
-        .breadcrumb { font-size: 0.85rem; color: #8b8fa3; }
-        .breadcrumb a { color: #3b82f6; text-decoration: none; cursor: pointer; }
+        header h1 { font-size: 14px; font-weight: 600; white-space: nowrap; }
+        header h1 span { color: #58a6ff; }
+        .breadcrumb { font-size: 12px; color: #8b949e; }
+        .breadcrumb a { color: #58a6ff; text-decoration: none; cursor: pointer; }
         .breadcrumb a:hover { text-decoration: underline; }
         .spacer { flex: 1; }
-        main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+        main { padding: 12px 16px; max-width: 1400px; margin: 0 auto; }
 
         /* Buttons */
         .btn {
-            padding: 0.4rem 1rem;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.85rem;
+            padding: 4px 12px;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            font-size: 12px;
             cursor: pointer;
-            font-weight: 500;
-            transition: all 0.15s;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
+            font-family: inherit;
+            background: #21262d;
+            color: #c9d1d9;
+            transition: all 0.1s;
         }
-        .btn-primary { background: #3b82f6; color: #fff; }
-        .btn-primary:hover { background: #2563eb; }
-        .btn-primary:disabled { background: #1e3a5f; color: #6b7280; cursor: wait; }
-        .btn-success { background: #22c55e; color: #fff; }
-        .btn-success:hover { background: #16a34a; }
-        .btn-success:disabled { background: #14532d; color: #6b7280; cursor: wait; }
-        .btn-danger { background: transparent; color: #ef4444; border: 1px solid #3a1a1a; font-size: 0.8rem; }
-        .btn-danger:hover { background: #3a1a1a; }
-        .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.78rem; }
-        .btn-ghost { background: transparent; color: #8b8fa3; border: 1px solid #2a2d3a; }
-        .btn-ghost:hover { background: #1a1d27; color: #e1e4eb; }
+        .btn:hover { background: #30363d; border-color: #8b949e; }
+        .btn:disabled { opacity: 0.4; cursor: default; }
+        .btn-primary { background: #238636; border-color: #238636; color: #fff; }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-primary:disabled { background: #238636; }
+        .btn-danger { color: #f85149; border-color: #f85149; background: transparent; }
+        .btn-danger:hover { background: #f8514922; }
 
-        /* Cards */
-        .card {
-            background: #1a1d27;
-            border: 1px solid #2a2d3a;
-            border-radius: 8px;
-            padding: 1rem 1.25rem;
-            margin-bottom: 1rem;
+        /* Form inputs */
+        input[type="text"], select {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: inherit;
         }
+        input[type="text"]:focus, select:focus { outline: none; border-color: #58a6ff; }
+        input[type="text"]::placeholder { color: #484f58; }
 
-        /* Stats row */
-        .stats-row {
+        /* Toolbar */
+        .toolbar {
             display: flex;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
             flex-wrap: wrap;
         }
-        .stat-card {
-            background: #1a1d27;
-            border: 1px solid #2a2d3a;
-            border-radius: 8px;
-            padding: 1rem 1.25rem;
-            flex: 1;
-            min-width: 120px;
-        }
-        .stat-val { font-size: 1.8rem; font-weight: 700; color: #3b82f6; }
-        .stat-label { font-size: 0.75rem; color: #8b8fa3; text-transform: uppercase; letter-spacing: 0.05em; }
+        .toolbar .count { color: #8b949e; font-size: 12px; }
 
-        /* Form */
-        .add-form {
+        /* Stats bar */
+        .stats-bar {
             display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-        }
-        input[type="text"] {
-            background: #0f1117;
-            border: 1px solid #2a2d3a;
-            color: #e1e4eb;
-            padding: 0.5rem 0.75rem;
+            gap: 16px;
+            padding: 10px 12px;
+            background: #161b22;
+            border: 1px solid #30363d;
             border-radius: 6px;
-            font-size: 0.9rem;
-            flex: 1;
-            max-width: 350px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
         }
-        input[type="text"]:focus { outline: none; border-color: #3b82f6; }
-        input[type="text"]::placeholder { color: #4a4d5a; }
+        .stat { display: flex; gap: 4px; align-items: baseline; }
+        .stat-val { font-weight: 700; color: #58a6ff; }
+        .stat-label { color: #8b949e; font-size: 11px; }
 
-        /* User list */
+        /* Table */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .data-table thead th {
+            background: #161b22;
+            padding: 6px 10px;
+            text-align: left;
+            font-size: 11px;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            border-bottom: 1px solid #30363d;
+            font-weight: 600;
+            white-space: nowrap;
+            user-select: none;
+        }
+        .data-table thead th.sortable { cursor: pointer; }
+        .data-table thead th.sortable:hover { color: #c9d1d9; }
+        .data-table thead th.sorted { color: #58a6ff; }
+        .data-table tbody tr { border-bottom: 1px solid #21262d; }
+        .data-table tbody tr:hover { background: #161b22; }
+        .data-table tbody tr.clickable { cursor: pointer; }
+        .data-table td { padding: 5px 10px; vertical-align: middle; }
+        .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .data-table td.muted { color: #8b949e; }
+        .data-table td img {
+            width: 40px; height: 28px; object-fit: cover;
+            border-radius: 3px; background: #0d1117; vertical-align: middle;
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .badge-blue { background: #0d419d; color: #58a6ff; }
+        .badge-yellow { background: #3d2e00; color: #d29922; }
+        .badge-green { background: #0f5323; color: #3fb950; }
+        .badge-red { background: #67060c; color: #f85149; }
+
+        /* Pagination */
+        .pager {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            color: #8b949e;
+        }
+        .pager button { padding: 2px 8px; font-size: 11px; }
+        .pager input {
+            width: 48px;
+            text-align: center;
+            padding: 2px 4px;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid #30363d;
+            margin-bottom: 12px;
+        }
+        .tab {
+            padding: 8px 16px;
+            font-size: 12px;
+            color: #8b949e;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            font-family: inherit;
+            background: none;
+            border-top: none;
+            border-left: none;
+            border-right: none;
+        }
+        .tab:hover { color: #c9d1d9; }
+        .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+
+        /* User row */
         .user-row {
             display: flex;
             align-items: center;
-            gap: 1rem;
-            padding: 0.75rem 0;
-            border-bottom: 1px solid #1f2230;
+            gap: 12px;
+            padding: 8px 12px;
+            border-bottom: 1px solid #21262d;
         }
         .user-row:last-child { border-bottom: none; }
-        .user-name {
-            font-weight: 600;
-            color: #3b82f6;
-            cursor: pointer;
-            font-size: 0.95rem;
-        }
+        .user-row:hover { background: #161b22; }
+        .user-name { font-weight: 600; color: #58a6ff; cursor: pointer; }
         .user-name:hover { text-decoration: underline; }
-        .user-meta { font-size: 0.78rem; color: #8b8fa3; }
-        .user-stats { display: flex; gap: 1rem; font-size: 0.8rem; color: #8b8fa3; }
-        .user-stats strong { color: #e1e4eb; }
+        .user-meta { font-size: 11px; color: #8b949e; }
 
-        /* Photo grid */
-        .photo-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1rem;
+        /* Progress */
+        .progress-banner {
+            background: #0d419d33;
+            border: 1px solid #0d419d;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            color: #58a6ff;
         }
-        .photo-card {
-            background: #1a1d27;
-            border: 1px solid #2a2d3a;
-            border-radius: 8px;
-            overflow: hidden;
-            transition: border-color 0.15s;
-            cursor: pointer;
-        }
-        .photo-card:hover { border-color: #3b82f6; }
-        .photo-card img {
-            width: 100%;
-            height: 180px;
-            object-fit: cover;
-            background: #0f1117;
-            display: block;
-        }
-        .photo-card .info { padding: 0.75rem 1rem; }
-        .photo-card .filename {
-            font-weight: 600;
-            font-size: 0.82rem;
-            word-break: break-all;
-            margin-bottom: 0.3rem;
-            color: #e1e4eb;
-        }
-        .photo-card .desc {
-            font-size: 0.78rem;
-            color: #8b8fa3;
-            max-height: 2.4em;
-            overflow: hidden;
-            margin-bottom: 0.4rem;
-        }
-        .usage-badge {
-            display: inline-block;
-            background: #1e3a5f;
-            color: #60a5fa;
-            padding: 0.15rem 0.5rem;
-            border-radius: 3px;
-            font-size: 0.72rem;
-            font-weight: 600;
-        }
-        .usage-badge.zero { background: #3a2a1a; color: #f59e0b; }
-
-        /* Tags */
-        .tag {
-            display: inline-block;
-            background: #1e293b;
-            color: #60a5fa;
-            padding: 0.12rem 0.45rem;
-            border-radius: 3px;
-            font-size: 0.7rem;
-            margin: 0.1rem;
-        }
-
-        /* Events feed */
-        .event-item {
-            display: flex;
-            gap: 0.75rem;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid #1f2230;
-            font-size: 0.85rem;
-            align-items: flex-start;
-        }
-        .event-item:last-child { border-bottom: none; }
-        .event-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
+        .progress-bar-bg {
+            height: 4px;
+            background: #21262d;
+            border-radius: 2px;
             margin-top: 6px;
-            flex-shrink: 0;
+            overflow: hidden;
         }
-        .event-dot.added { background: #22c55e; }
-        .event-dot.removed { background: #ef4444; }
-        .event-time { color: #6b7280; font-size: 0.75rem; white-space: nowrap; }
-        .event-photo { color: #60a5fa; }
-        .event-article { color: #e1e4eb; }
-        .event-wiki { color: #6b7280; font-size: 0.72rem; }
+        .progress-bar-fill {
+            height: 100%;
+            background: #58a6ff;
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
+        .result-banner {
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            border: 1px solid;
+        }
+        .result-banner.ok { background: #0f532333; border-color: #238636; color: #3fb950; }
+        .result-banner.err { background: #67060c33; border-color: #f85149; color: #f85149; }
 
-        /* Article list */
-        .usage-list { list-style: none; }
-        .usage-list li {
-            padding: 0.35rem 0;
-            border-bottom: 1px solid #1f2230;
-            font-size: 0.85rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .usage-list li:last-child { border-bottom: none; }
-        .usage-list a { color: #60a5fa; text-decoration: none; }
-        .usage-list a:hover { text-decoration: underline; }
-        .wiki-badge {
-            font-size: 0.7rem;
-            background: #1e293b;
-            color: #8b8fa3;
-            padding: 0.1rem 0.4rem;
-            border-radius: 3px;
-        }
-
-        /* Photo detail */
-        .photo-header {
-            display: flex;
-            gap: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-        .photo-header img {
-            width: 300px;
-            height: 220px;
-            object-fit: cover;
-            border-radius: 8px;
-            background: #0f1117;
-            flex-shrink: 0;
-        }
-        .photo-meta { flex: 1; }
-        .photo-meta h2 { font-size: 1rem; word-break: break-all; margin-bottom: 0.5rem; }
-        .photo-meta .desc { color: #8b8fa3; font-size: 0.85rem; margin-bottom: 0.5rem; }
-
-        .section-title {
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: #8b8fa3;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin: 1rem 0 0.5rem;
-        }
-
-        /* Spinner */
         .spinner {
             display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid #2a2d3a;
-            border-top-color: #3b82f6;
+            width: 12px; height: 12px;
+            border: 2px solid #30363d;
+            border-top-color: #58a6ff;
             border-radius: 50%;
             animation: spin 0.6s linear infinite;
             vertical-align: middle;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        .empty { text-align: center; padding: 3rem; color: #6b7280; }
-        .polling-banner {
-            background: #1e3a5f;
-            color: #60a5fa;
-            padding: 0.6rem 1rem;
-            border-radius: 6px;
-            margin-bottom: 1rem;
-            font-size: 0.85rem;
-        }
-        .polling-banner .progress-top {
+        .empty { text-align: center; padding: 32px; color: #484f58; }
+
+        /* Photo detail header */
+        .photo-header {
             display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.4rem;
+            gap: 16px;
+            margin-bottom: 16px;
         }
-        .progress-bar-bg {
-            height: 6px;
-            background: #0f1117;
-            border-radius: 3px;
-            overflow: hidden;
-        }
-        .progress-bar-fill {
-            height: 100%;
-            background: #3b82f6;
-            border-radius: 3px;
-            transition: width 0.3s ease;
-        }
-        .progress-detail {
-            font-size: 0.78rem;
-            color: #93c5fd;
-            margin-top: 0.3rem;
-        }
-        .poll-result {
-            background: #14532d;
-            color: #86efac;
-            padding: 0.6rem 1rem;
+        .photo-header img {
+            width: 280px; height: 200px;
+            object-fit: cover;
             border-radius: 6px;
-            margin-bottom: 1rem;
-            font-size: 0.85rem;
+            background: #161b22;
+            border: 1px solid #30363d;
         }
-        .poll-result.error { background: #3a1a1a; color: #fca5a5; }
+        .photo-info { flex: 1; }
+        .photo-info h2 { font-size: 14px; word-break: break-all; margin-bottom: 4px; }
+        .photo-info .desc { color: #8b949e; font-size: 12px; margin-bottom: 6px; }
+        .tag {
+            display: inline-block;
+            background: #0d419d44;
+            color: #79c0ff;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin: 1px;
+        }
+        .wiki-bar {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
 
-        /* Two-column layout for detail views */
-        .two-col {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
+        /* Event feed */
+        .event-row {
+            display: flex;
+            gap: 8px;
+            padding: 4px 0;
+            border-bottom: 1px solid #21262d;
+            align-items: baseline;
+            font-size: 12px;
         }
-        @media (max-width: 700px) {
-            .two-col { grid-template-columns: 1fr; }
+        .event-row:last-child { border-bottom: none; }
+        .dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+        .dot.added { background: #3fb950; }
+        .dot.removed { background: #f85149; }
+
+        @media (max-width: 800px) {
             .photo-header { flex-direction: column; }
-            .photo-header img { width: 100%; }
+            .photo-header img { width: 100%; height: 180px; }
         }
-
-        /* Data table */
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85rem;
-        }
-        .data-table thead th {
-            background: #151821;
-            padding: 0.5rem 0.75rem;
-            text-align: left;
-            font-size: 0.75rem;
-            color: #8b8fa3;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            border-bottom: 1px solid #2a2d3a;
-            position: sticky;
-            top: 0;
-        }
-        .data-table tbody tr {
-            border-bottom: 1px solid #1f2230;
-            transition: background 0.1s;
-        }
-        .data-table tbody tr:hover { background: #1f2535; }
-        .data-table td { padding: 0.45rem 0.75rem; vertical-align: middle; }
-        .sort-col {
-            cursor: pointer;
-            user-select: none;
-            color: #8b8fa3;
-        }
-        .sort-col:hover { color: #e1e4eb; }
-        .sort-col.active { color: #3b82f6; }
-        .pagination button:disabled { opacity: 0.3; cursor: default; }
-
-        .suggest-area { margin-top: 0.5rem; }
-        .suggestion-item { font-size: 0.82rem; padding: 0.2rem 0; }
-        .suggestion-item a { color: #22c55e; text-decoration: none; }
-        .suggestion-item a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -372,421 +299,371 @@
 <main id="app"></main>
 
 <script>
-// ─── State ───
-let currentView = 'users';  // users | user-detail | photo-detail
-let currentUserId = null;
-let currentPhotoId = null;
+let view = 'users', userId = null, photoId = null;
+let detailSort = 'usages', detailPage = 1, detailSearch = '';
+let detailTab = 'photos';
+let usagePage = 1;
 let pollTimers = {};
 
 const $ = id => document.getElementById(id);
-const app = $('app');
-const bc = $('breadcrumb');
+const app = $('app'), bc = $('breadcrumb');
 
-function esc(s) {
-    const d = document.createElement('div');
-    d.textContent = s || '';
-    return d.innerHTML;
-}
-function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '...' : (s || ''); }
+function esc(s) { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
+function trunc(s, n) { return s && s.length > n ? s.slice(0,n)+'...' : (s||''); }
 function relTime(iso) {
-    if (!iso) return 'Never';
-    const d = new Date(iso);
-    const diff = Date.now() - d.getTime();
-    if (diff < 60000) return 'Just now';
-    if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
-    if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
-    return d.toLocaleDateString();
-}
-function fmtDate(iso) {
-    if (!iso) return '';
-    return new Date(iso).toLocaleString();
+    if (!iso) return 'never';
+    const ms = Date.now() - new Date(iso).getTime();
+    if (ms < 60000) return 'just now';
+    if (ms < 3600000) return Math.floor(ms/60000)+'m ago';
+    if (ms < 86400000) return Math.floor(ms/3600000)+'h ago';
+    return new Date(iso).toLocaleDateString();
 }
 
-async function api(path, opts = {}) {
-    const resp = await fetch(path, {
-        headers: { 'Content-Type': 'application/json' },
-        ...opts,
-        body: opts.body ? JSON.stringify(opts.body) : undefined,
-    });
-    return resp.json();
+async function api(path, opts={}) {
+    const r = await fetch(path, { headers:{'Content-Type':'application/json'}, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    return r.json();
 }
 
-// ─── Router ───
-function navigate(view, id, id2) {
-    currentView = view;
-    currentUserId = id || null;
-    currentPhotoId = id2 || null;
+function go(v, uid, pid) {
+    view = v; userId = uid||null; photoId = pid||null;
+    if (v === 'user-detail') { detailPage = 1; detailSearch = ''; detailTab = 'photos'; }
+    if (v === 'photo-detail') { usagePage = 1; }
     render();
 }
 
-// ─── Views ───
 async function render() {
-    if (currentView === 'users') await renderUsers();
-    else if (currentView === 'user-detail') await renderUserDetail();
-    else if (currentView === 'photo-detail') await renderPhotoDetail();
+    if (view === 'users') await renderUsers();
+    else if (view === 'user-detail') await renderUserDetail();
+    else if (view === 'photo-detail') await renderPhotoDetail();
 }
 
-// ── Users list ──
+// ─── Users ───
 async function renderUsers() {
     bc.innerHTML = '';
     const users = await api('api/users');
-
     app.innerHTML = `
-        <div class="add-form">
-            <input type="text" id="new-username" placeholder="Wikimedia Commons username">
+        <div class="toolbar">
+            <input type="text" id="new-user" placeholder="Commons username..." style="width:220px">
             <button class="btn btn-primary" onclick="addUser()">Track User</button>
         </div>
-        ${users.length === 0 ? '<div class="empty">No users tracked yet. Add a Commons username above.</div>' : ''}
-        <div class="card" ${users.length === 0 ? 'style="display:none"' : ''}>
-            ${users.map(u => `
-                <div class="user-row" style="flex-wrap:wrap">
-                    <div style="flex:1;min-width:150px">
-                        <div class="user-name" onclick="navigate('user-detail', ${u.id})">${esc(u.username)}</div>
-                        <div class="user-meta">Added ${relTime(u.added_at)} · Polled ${relTime(u.last_polled)}</div>
-                    </div>
-                    <div class="user-stats">
-                        <span><strong>${u.photo_count}</strong> photos</span>
-                        <span><strong>${u.active_usages}</strong> usages</span>
-                    </div>
-                    <button class="btn btn-success btn-sm" onclick="pollUser(${u.id}, '${esc(u.username)}')" ${u.is_polling ? 'disabled' : ''}>
-                        ${u.is_polling ? '<span class="spinner"></span> Polling' : 'Poll Now'}
-                    </button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id}, '${esc(u.username)}')">Remove</button>
-                    ${u.is_polling ? `
-                        <div style="width:100%;margin-top:0.5rem" id="user-progress-${u.id}">
-                            <div class="progress-bar-bg"><div class="progress-bar-fill" id="user-bar-${u.id}" style="width:0%"></div></div>
-                            <div class="progress-detail" id="user-detail-${u.id}" style="color:#93c5fd">Starting...</div>
-                        </div>
-                    ` : ''}
-                </div>
-            `).join('')}
-        </div>
-    `;
-
-    $('new-username')?.addEventListener('keydown', e => { if (e.key === 'Enter') addUser(); });
-
-    // Start progress timers for any actively polling users
-    users.filter(u => u.is_polling).forEach(u => startProgressTimer(u.id));
+        ${users.length === 0 ? '<div class="empty">No tracked users. Add a Commons username above.</div>' : `
+        <table class="data-table">
+            <thead><tr>
+                <th>Username</th>
+                <th style="width:100px" class="num">Photos</th>
+                <th style="width:100px" class="num">Usages</th>
+                <th style="width:140px">Last Polled</th>
+                <th style="width:200px">Actions</th>
+            </tr></thead>
+            <tbody>
+                ${users.map(u => `<tr>
+                    <td><span class="user-name" onclick="go('user-detail',${u.id})">${esc(u.username)}</span></td>
+                    <td class="num">${u.photo_count.toLocaleString()}</td>
+                    <td class="num">${u.active_usages.toLocaleString()}</td>
+                    <td class="muted">${relTime(u.last_polled)}</td>
+                    <td>
+                        <button class="btn btn-primary" onclick="event.stopPropagation();pollAndTrack(${u.id},'${esc(u.username)}')" ${u.is_polling?'disabled':''}>
+                            ${u.is_polling?'<span class="spinner"></span> Polling':'Poll Now'}
+                        </button>
+                        <button class="btn btn-danger" onclick="event.stopPropagation();delUser(${u.id},'${esc(u.username)}')">Delete</button>
+                    </td>
+                </tr>
+                ${u.is_polling ? `<tr><td colspan="5" style="padding:4px 10px">
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" id="ubar-${u.id}" style="width:0%"></div></div>
+                    <div style="color:#58a6ff;font-size:11px;margin-top:2px" id="udet-${u.id}">Starting...</div>
+                </td></tr>` : ''}
+                `).join('')}
+            </tbody>
+        </table>`}`;
+    $('new-user')?.addEventListener('keydown', e => { if(e.key==='Enter') addUser(); });
+    users.filter(u=>u.is_polling).forEach(u => startUserTimer(u.id));
 }
 
 async function addUser() {
-    const input = $('new-username');
-    const username = input.value.trim();
-    if (!username) return;
-    const result = await api('api/users', { method: 'POST', body: { username } });
-    if (result.error && !result.id) { alert(result.error); return; }
+    const v = $('new-user').value.trim(); if(!v) return;
+    const r = await api('api/users',{method:'POST',body:{username:v}});
+    if(r.error && !r.id) { alert(r.error); return; }
     render();
 }
+async function delUser(id,name) { if(!confirm('Delete '+name+'?')) return; await api('api/users/'+id,{method:'DELETE'}); render(); }
+async function pollAndTrack(id,name) { await api('api/users/'+id+'/poll',{method:'POST'}); render(); }
 
-async function deleteUser(id, name) {
-    if (!confirm('Remove ' + name + ' and all their data?')) return;
-    await api('api/users/' + id, { method: 'DELETE' });
-    render();
-}
-
-async function pollUser(id, name) {
-    await api('api/users/' + id + '/poll', { method: 'POST' });
-    render();
-}
-
-function startProgressTimer(id) {
-    if (pollTimers[id]) clearInterval(pollTimers[id]);
-    pollTimers[id] = setInterval(async () => {
-        const status = await api('api/users/' + id + '/poll-status');
-        if (!status.is_polling) {
-            clearInterval(pollTimers[id]);
-            delete pollTimers[id];
-            render();
-        } else if (status.progress) {
-            const bar = $('user-bar-' + id);
-            const detail = $('user-detail-' + id);
-            if (bar) bar.style.width = (status.progress.pct || 0) + '%';
-            if (detail) detail.textContent = (status.progress.detail || '') + ' (' + (status.progress.pct || 0) + '%)';
+function startUserTimer(id) {
+    if(pollTimers[id]) clearInterval(pollTimers[id]);
+    pollTimers[id] = setInterval(async()=>{
+        const s = await api('api/users/'+id+'/poll-status');
+        if(!s.is_polling) { clearInterval(pollTimers[id]); delete pollTimers[id]; render(); return; }
+        if(s.progress) {
+            const bar=$('ubar-'+id), det=$('udet-'+id);
+            if(bar) bar.style.width=(s.progress.pct||0)+'%';
+            if(det) det.textContent=(s.progress.detail||'')+' ('+( s.progress.pct||0)+'%)';
         }
     }, 2000);
 }
 
-// ── User detail ──
-let detailSort = 'usages';
-let detailPage = 1;
-
+// ─── User Detail ───
 async function renderUserDetail() {
-    const id = currentUserId;
-    bc.innerHTML = `<a onclick="navigate('users')">Users</a> / Loading...`;
+    const id = userId;
+    bc.innerHTML = `<a onclick="go('users')">Users</a> / ...`;
 
-    const [photosData, stats, eventsData, statusData] = await Promise.all([
-        api(`api/users/${id}/photos?page=${detailPage}&per_page=50&sort=${detailSort}`),
-        api('api/users/' + id + '/stats'),
-        api('api/users/' + id + '/events?limit=30'),
-        api('api/users/' + id + '/poll-status'),
+    const [stats, statusData] = await Promise.all([
+        api('api/users/'+id+'/stats'),
+        api('api/users/'+id+'/poll-status'),
     ]);
-
-    if (photosData.error) { app.innerHTML = '<div class="empty">' + esc(photosData.error) + '</div>'; return; }
-
-    bc.innerHTML = `<a onclick="navigate('users')">Users</a> / ${esc(photosData.username)}`;
 
     const isPolling = statusData.is_polling;
     const pollResult = statusData.result;
-    const totalPages = photosData.pages || 1;
 
-    function sortLink(field, label) {
-        const active = detailSort === field;
-        return `<span class="sort-col ${active ? 'active' : ''}" onclick="detailSort='${field}';detailPage=1;render()">${label}${active ? ' &#9660;' : ''}</span>`;
+    // Load tab content
+    let tabContent = '';
+    if (detailTab === 'photos') {
+        const q = detailSearch ? '&q='+encodeURIComponent(detailSearch) : '';
+        const photosData = await api(`api/users/${id}/photos?page=${detailPage}&per_page=50&sort=${detailSort}${q}`);
+        bc.innerHTML = `<a onclick="go('users')">Users</a> / ${esc(photosData.username)}`;
+        const tp = photosData.pages;
+
+        function thSort(field, label, width) {
+            const cur = detailSort === field;
+            const rev = detailSort === field ? field+'_asc' : (detailSort === field+'_asc' ? field : field);
+            const arrow = cur ? ' &#9660;' : (detailSort === field+'_asc' ? ' &#9650;' : '');
+            const cls = (cur || detailSort === field+'_asc') ? 'sortable sorted' : 'sortable';
+            return `<th class="${cls}" style="width:${width}" onclick="toggleSort('${field}')">${label}${arrow}</th>`;
+        }
+
+        tabContent = `
+            <div class="toolbar">
+                <input type="text" id="search-box" placeholder="Search filenames..." value="${esc(detailSearch)}" style="width:250px">
+                <div class="spacer" style="flex:1"></div>
+                <div class="pager">
+                    <span class="count">${photosData.total.toLocaleString()} photos</span>
+                    <button class="btn" onclick="detailPage--;render()" ${detailPage<=1?'disabled':''}>&laquo;</button>
+                    <span>${detailPage}/${tp}</span>
+                    <button class="btn" onclick="detailPage++;render()" ${detailPage>=tp?'disabled':''}>&raquo;</button>
+                </div>
+            </div>
+            <table class="data-table">
+                <thead><tr>
+                    <th style="width:48px"></th>
+                    ${thSort('name','Filename','')}
+                    ${thSort('usages','Usages','90px')}
+                    ${thSort('date','Uploaded','100px')}
+                </tr></thead>
+                <tbody>
+                    ${photosData.photos.length===0 ? '<tr><td colspan="4" class="empty">No photos found</td></tr>' : ''}
+                    ${photosData.photos.map(p => `
+                        <tr class="clickable" onclick="go('photo-detail',${id},${p.id})">
+                            <td><img src="${esc(p.thumb_url)}" onerror="this.style.visibility='hidden'" loading="lazy"></td>
+                            <td>
+                                <div style="font-weight:500">${esc(trunc(p.filename,70))}</div>
+                                ${p.description?'<div style="color:#8b949e;font-size:11px">'+esc(trunc(p.description,80))+'</div>':''}
+                            </td>
+                            <td class="num"><span class="badge ${p.usage_count===0?'badge-yellow':'badge-blue'}">${p.usage_count.toLocaleString()}</span></td>
+                            <td class="muted">${p.upload_date?new Date(p.upload_date).toLocaleDateString():''}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>`;
+    } else {
+        const eventsData = await api('api/users/'+id+'/events?limit=100');
+        tabContent = `
+            <table class="data-table">
+                <thead><tr>
+                    <th style="width:20px"></th>
+                    <th>Photo</th>
+                    <th>Action</th>
+                    <th>Article</th>
+                    <th>Wiki</th>
+                    <th style="width:140px">Time</th>
+                </tr></thead>
+                <tbody>
+                    ${eventsData.events.length===0?'<tr><td colspan="6" class="empty">No events recorded yet</td></tr>':''}
+                    ${eventsData.events.map(e => `
+                        <tr>
+                            <td><span class="dot ${e.event_type}"></span></td>
+                            <td><span style="color:#58a6ff;cursor:pointer" onclick="go('photo-detail',${id},${e.photo_id})">${esc(trunc(e.photo_filename,40))}</span></td>
+                            <td><span class="badge ${e.event_type==='added'?'badge-green':'badge-red'}">${e.event_type}</span></td>
+                            <td>${esc(trunc(e.article_title,50))}</td>
+                            <td class="muted">${esc(e.wiki)}</td>
+                            <td class="muted">${relTime(e.timestamp)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>`;
     }
 
     app.innerHTML = `
-        ${isPolling ? `<div class="polling-banner" id="poll-banner">
-            <div class="progress-top">
-                <span class="spinner"></span>
-                <span>Polling Commons API for ${esc(photosData.username)}...</span>
-                <span id="poll-pct" style="margin-left:auto;font-weight:600">${statusData.progress?.pct || 0}%</span>
-            </div>
-            <div class="progress-bar-bg"><div class="progress-bar-fill" id="poll-bar" style="width:${statusData.progress?.pct || 0}%"></div></div>
-            <div class="progress-detail" id="poll-detail">${esc(statusData.progress?.detail || 'Starting...')}</div>
+        ${isPolling ? `<div class="progress-banner" id="poll-banner">
+            <span class="spinner"></span> Polling...
+            <span id="poll-pct" style="float:right">${statusData.progress?.pct||0}%</span>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" id="poll-bar" style="width:${statusData.progress?.pct||0}%"></div></div>
+            <div id="poll-detail" style="margin-top:2px">${esc(statusData.progress?.detail||'Starting...')}</div>
         </div>` : ''}
-        ${pollResult && !pollResult.error ? `
-            <div class="poll-result">
-                Poll complete: ${pollResult.total_photos} photos scanned,
-                ${pollResult.new_photos} new photos,
-                ${pollResult.new_usages} new usages,
-                ${pollResult.removed_usages} removed
-            </div>
-        ` : ''}
-        ${pollResult && pollResult.error ? '<div class="poll-result error">Poll error: ' + esc(pollResult.error) + '</div>' : ''}
+        ${pollResult && !pollResult.error ? `<div class="result-banner ok">${pollResult.total_photos} photos, +${pollResult.new_photos} new, +${pollResult.new_usages} usages, -${pollResult.removed_usages} removed</div>` : ''}
+        ${pollResult?.error ? `<div class="result-banner err">${esc(pollResult.error)}</div>` : ''}
 
-        <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
-            <h2 style="font-size:1.1rem">${esc(photosData.username)}</h2>
-            <button class="btn btn-success btn-sm" onclick="pollUserDetail(${id}, '${esc(photosData.username)}')" ${isPolling ? 'disabled' : ''}>
-                ${isPolling ? '<span class="spinner"></span> Polling...' : 'Poll Now'}
+        <div class="stats-bar">
+            <div class="stat"><span class="stat-val">${stats.total_photos.toLocaleString()}</span> <span class="stat-label">photos</span></div>
+            <div class="stat"><span class="stat-val">${stats.active_usages.toLocaleString()}</span> <span class="stat-label">usages</span></div>
+            <div class="stat"><span class="stat-val">${stats.unused_photos.toLocaleString()}</span> <span class="stat-label">unused</span></div>
+            <div class="stat"><span class="stat-val">${stats.unique_wikis}</span> <span class="stat-label">wikis</span></div>
+            <div class="stat"><span class="stat-val">${stats.avg_usages}</span> <span class="stat-label">avg/photo</span></div>
+            <div class="spacer" style="flex:1"></div>
+            <button class="btn btn-primary" onclick="pollDetail(${id})" ${isPolling?'disabled':''}>
+                ${isPolling?'<span class="spinner"></span> Polling...':'Poll Now'}
             </button>
         </div>
 
-        <div class="stats-row">
-            <div class="stat-card"><div class="stat-val">${stats.total_photos}</div><div class="stat-label">Photos</div></div>
-            <div class="stat-card"><div class="stat-val">${stats.active_usages.toLocaleString()}</div><div class="stat-label">Active Usages</div></div>
-            <div class="stat-card"><div class="stat-val">${stats.unused_photos}</div><div class="stat-label">Unused</div></div>
-            <div class="stat-card"><div class="stat-val">${stats.unique_wikis}</div><div class="stat-label">Wikis</div></div>
-            <div class="stat-card"><div class="stat-val">${stats.avg_usages}</div><div class="stat-label">Avg Uses</div></div>
+        <div class="tabs">
+            <button class="tab ${detailTab==='photos'?'active':''}" onclick="detailTab='photos';render()">Photos</button>
+            <button class="tab ${detailTab==='events'?'active':''}" onclick="detailTab='events';render()">Events</button>
         </div>
-
-        <div class="two-col">
-            <div>
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
-                    <div class="section-title" style="margin:0">Photos (${photosData.total})</div>
-                    <div class="pagination">
-                        <button class="btn btn-ghost btn-sm" onclick="detailPage--;render()" ${detailPage <= 1 ? 'disabled' : ''}>&laquo; Prev</button>
-                        <span style="font-size:0.8rem;color:#8b8fa3;margin:0 0.5rem">Page ${detailPage} of ${totalPages}</span>
-                        <button class="btn btn-ghost btn-sm" onclick="detailPage++;render()" ${detailPage >= totalPages ? 'disabled' : ''}>Next &raquo;</button>
-                    </div>
-                </div>
-
-                <div class="card" style="padding:0;overflow-x:auto">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th style="width:52px"></th>
-                                <th>${sortLink('name', 'Filename')}</th>
-                                <th style="width:90px;text-align:right">${sortLink('usages', 'Usages')}</th>
-                                <th style="width:110px">${sortLink('date', 'Uploaded')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${photosData.photos.map(p => `
-                                <tr onclick="navigate('photo-detail', ${id}, ${p.id})" style="cursor:pointer">
-                                    <td><img src="${esc(p.thumb_url)}" style="width:44px;height:32px;object-fit:cover;border-radius:3px;background:#0f1117" onerror="this.style.display='none'" loading="lazy"></td>
-                                    <td>
-                                        <div style="font-weight:500;font-size:0.82rem">${esc(truncate(p.filename, 55))}</div>
-                                        ${p.description ? '<div style="font-size:0.72rem;color:#6b7280">' + esc(truncate(p.description, 60)) + '</div>' : ''}
-                                    </td>
-                                    <td style="text-align:right">
-                                        <span class="usage-badge ${p.usage_count === 0 ? 'zero' : ''}">${p.usage_count.toLocaleString()}</span>
-                                    </td>
-                                    <td style="font-size:0.78rem;color:#8b8fa3">${p.upload_date ? new Date(p.upload_date).toLocaleDateString() : ''}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    ${photosData.total === 0 ? '<div class="empty">No photos yet. Hit "Poll Now" to fetch from Commons.</div>' : ''}
-                </div>
-            </div>
-            <div>
-                <div class="section-title">Recent Events</div>
-                <div class="card">
-                    ${eventsData.events.length === 0 ? '<div class="empty" style="padding:1rem">No events yet. Poll to start tracking.</div>' : ''}
-                    ${eventsData.events.map(e => `
-                        <div class="event-item">
-                            <div class="event-dot ${e.event_type}"></div>
-                            <div style="flex:1">
-                                <span class="event-photo" style="cursor:pointer"
-                                      onclick="navigate('photo-detail', ${id}, ${e.photo_id})">${esc(truncate(e.photo_filename, 35))}</span>
-                                <span style="color:#6b7280">${e.event_type === 'added' ? 'added to' : 'removed from'}</span>
-                                <span class="event-article">${esc(e.article_title)}</span>
-                                <span class="event-wiki">${esc(e.wiki)}</span>
-                            </div>
-                            <div class="event-time">${relTime(e.timestamp)}</div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        </div>
+        ${tabContent}
     `;
 
+    if (detailTab === 'photos') {
+        const sb = $('search-box');
+        if (sb) {
+            let timer;
+            sb.addEventListener('input', () => {
+                clearTimeout(timer);
+                timer = setTimeout(() => { detailSearch = sb.value; detailPage = 1; render(); }, 300);
+            });
+        }
+    }
+
     if (isPolling) {
-        if (pollTimers['detail_' + id]) clearInterval(pollTimers['detail_' + id]);
-        pollTimers['detail_' + id] = setInterval(async () => {
-            const s = await api('api/users/' + id + '/poll-status');
-            if (!s.is_polling) {
-                clearInterval(pollTimers['detail_' + id]);
-                delete pollTimers['detail_' + id];
-                render();
-            } else if (s.progress) {
-                const bar = $('poll-bar');
-                const pct = $('poll-pct');
-                const detail = $('poll-detail');
-                if (bar) bar.style.width = (s.progress.pct || 0) + '%';
-                if (pct) pct.textContent = (s.progress.pct || 0) + '%';
-                if (detail) detail.textContent = s.progress.detail || '';
+        if(pollTimers['d'+id]) clearInterval(pollTimers['d'+id]);
+        pollTimers['d'+id] = setInterval(async()=>{
+            const s = await api('api/users/'+id+'/poll-status');
+            if(!s.is_polling) { clearInterval(pollTimers['d'+id]); delete pollTimers['d'+id]; render(); return; }
+            if(s.progress) {
+                const bar=$('poll-bar'),pct=$('poll-pct'),det=$('poll-detail');
+                if(bar) bar.style.width=(s.progress.pct||0)+'%';
+                if(pct) pct.textContent=(s.progress.pct||0)+'%';
+                if(det) det.textContent=s.progress.detail||'';
             }
         }, 2000);
     }
 }
 
-async function pollUserDetail(id, name) {
-    await api('api/users/' + id + '/poll', { method: 'POST' });
+function toggleSort(field) {
+    if (detailSort === field) detailSort = field + '_asc';
+    else if (detailSort === field + '_asc') detailSort = field;
+    else detailSort = field;
+    detailPage = 1;
     render();
 }
 
-// ── Photo detail ──
+async function pollDetail(id) { await api('api/users/'+id+'/poll',{method:'POST'}); render(); }
+
+// ─── Photo Detail ───
 async function renderPhotoDetail() {
-    const uid = currentUserId;
-    const pid = currentPhotoId;
-    bc.innerHTML = `<a onclick="navigate('users')">Users</a> / <a onclick="navigate('user-detail', ${uid})">Loading...</a> / Photo`;
+    const pid = photoId;
+    bc.innerHTML = `<a onclick="go('users')">Users</a> / ... / Photo`;
 
-    const photo = await api('api/photos/' + pid);
-    if (photo.error) { app.innerHTML = '<div class="empty">' + esc(photo.error) + '</div>'; return; }
+    const photo = await api(`api/photos/${pid}?usage_page=${usagePage}`);
+    if (photo.error) { app.innerHTML = '<div class="empty">'+esc(photo.error)+'</div>'; return; }
 
-    // Get parent user name from the user-detail breadcrumb context
-    const userPhotos = await api('api/users/' + uid + '/photos');
-    const userName = userPhotos.username || 'User';
+    bc.innerHTML = `<a onclick="go('users')">Users</a> / <a onclick="go('user-detail',${photo.user_id})">${esc(photo.username)}</a> / ${esc(trunc(photo.filename,40))}`;
 
-    bc.innerHTML = `<a onclick="navigate('users')">Users</a> / <a onclick="navigate('user-detail', ${uid})">${esc(userName)}</a> / ${esc(truncate(photo.filename, 30))}`;
+    const up = photo.usage_pages;
 
     app.innerHTML = `
         <div class="photo-header">
-            <img src="${esc(photo.thumb_url)}" alt="${esc(photo.filename)}"
-                 onerror="this.src=''; this.alt='Image unavailable'">
-            <div class="photo-meta">
+            <img src="${esc(photo.thumb_url)}" onerror="this.style.visibility='hidden'">
+            <div class="photo-info">
                 <h2>${esc(photo.filename)}</h2>
-                ${photo.description ? '<div class="desc">' + esc(photo.description) + '</div>' : ''}
-                <div style="font-size:0.8rem;color:#8b8fa3;margin-bottom:0.5rem">
-                    Uploaded ${fmtDate(photo.upload_date)}
+                ${photo.description?'<div class="desc">'+esc(photo.description)+'</div>':''}
+                <div style="color:#8b949e;margin-bottom:6px">Uploaded ${photo.upload_date?new Date(photo.upload_date).toLocaleDateString():''}</div>
+                <div style="margin-bottom:8px">${(photo.categories||[]).slice(0,12).map(c=>'<span class="tag">'+esc(c)+'</span>').join(' ')}</div>
+                <div class="stats-bar" style="margin-bottom:8px;display:inline-flex">
+                    <div class="stat"><span class="stat-val">${photo.active_total.toLocaleString()}</span> <span class="stat-label">active</span></div>
+                    <div class="stat"><span class="stat-val">${photo.removed_count}</span> <span class="stat-label">removed</span></div>
+                    <div class="stat"><span class="stat-val">${photo.wiki_breakdown.length}</span> <span class="stat-label">wikis</span></div>
                 </div>
-                <div style="margin-bottom:0.5rem">
-                    ${(photo.categories || []).slice(0, 10).map(c => '<span class="tag">' + esc(c) + '</span>').join(' ')}
+                <div class="wiki-bar">
+                    ${photo.wiki_breakdown.slice(0,15).map(w => `<span class="badge badge-blue">${esc(w.wiki)} (${w.count})</span>`).join(' ')}
                 </div>
-                <a href="https://commons.wikimedia.org/wiki/File:${encodeURIComponent(photo.filename)}"
-                   target="_blank" class="btn btn-ghost btn-sm" style="margin-right:0.5rem">View on Commons</a>
-                <button class="btn btn-success btn-sm" id="suggest-btn" onclick="getSuggestions()">Suggest Articles</button>
-                <div id="suggestions" class="suggest-area"></div>
+                <div style="margin-top:8px">
+                    <a href="https://commons.wikimedia.org/wiki/File:${encodeURIComponent(photo.filename)}" target="_blank" class="btn">View on Commons</a>
+                    <button class="btn btn-primary" id="suggest-btn" onclick="doSuggest()">Suggest Articles</button>
+                </div>
+                <div id="suggestions"></div>
             </div>
         </div>
 
-        <div class="two-col">
-            <div>
-                <div class="section-title">Active Usages (${photo.active_usages.length})</div>
-                <div class="card">
-                    ${photo.active_usages.length === 0 ? '<div style="color:#6b7280;font-size:0.85rem">Not used in any articles</div>' : ''}
-                    <ul class="usage-list">
-                        ${photo.active_usages.map(u => `
-                            <li>
-                                <a href="${esc(u.article_url)}" target="_blank">${esc(u.article_title)}</a>
-                                <span>
-                                    <span class="wiki-badge">${esc(u.wiki)}</span>
-                                    <span style="font-size:0.72rem;color:#6b7280;margin-left:0.3rem">since ${relTime(u.first_seen)}</span>
-                                </span>
-                            </li>
-                        `).join('')}
-                    </ul>
-                </div>
-
-                ${photo.removed_usages.length > 0 ? `
-                    <div class="section-title">Removed Usages (${photo.removed_usages.length})</div>
-                    <div class="card">
-                        <ul class="usage-list">
-                            ${photo.removed_usages.map(u => `
-                                <li style="opacity:0.6">
-                                    <span>${esc(u.article_title)}</span>
-                                    <span class="wiki-badge">${esc(u.wiki)}</span>
-                                </li>
-                            `).join('')}
-                        </ul>
-                    </div>
-                ` : ''}
-            </div>
-            <div>
-                <div class="section-title">History</div>
-                <div class="card">
-                    ${photo.events.length === 0 ? '<div style="color:#6b7280;font-size:0.85rem">No events recorded yet</div>' : ''}
-                    ${photo.events.map(e => `
-                        <div class="event-item">
-                            <div class="event-dot ${e.event_type}"></div>
-                            <div style="flex:1">
-                                <span style="color:#e1e4eb">${e.event_type === 'added' ? 'Added to' : 'Removed from'}</span>
-                                <span class="event-article">${esc(e.article_title)}</span>
-                                <span class="event-wiki">${esc(e.wiki)}</span>
-                            </div>
-                            <div class="event-time">${fmtDate(e.timestamp)}</div>
-                        </div>
-                    `).join('')}
-                </div>
+        <div class="tabs">
+            <button class="tab active">Usages (${photo.active_total.toLocaleString()})</button>
+        </div>
+        <div class="toolbar">
+            <div class="spacer" style="flex:1"></div>
+            <div class="pager">
+                <button class="btn" onclick="usagePage--;render()" ${usagePage<=1?'disabled':''}>&laquo;</button>
+                <span>${usagePage}/${up}</span>
+                <button class="btn" onclick="usagePage++;render()" ${usagePage>=up?'disabled':''}>&raquo;</button>
             </div>
         </div>
+        <table class="data-table">
+            <thead><tr>
+                <th>Article</th>
+                <th style="width:200px">Wiki</th>
+                <th style="width:120px">First Seen</th>
+            </tr></thead>
+            <tbody>
+                ${photo.active_usages.length===0?'<tr><td colspan="3" class="empty">No usages</td></tr>':''}
+                ${photo.active_usages.map(u => `
+                    <tr>
+                        <td><a href="${esc(u.article_url)}" target="_blank" style="color:#58a6ff;text-decoration:none">${esc(u.article_title)}</a></td>
+                        <td class="muted">${esc(u.wiki)}</td>
+                        <td class="muted">${relTime(u.first_seen)}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+
+        ${photo.events.length>0 ? `
+        <div class="tabs" style="margin-top:16px">
+            <button class="tab active">History (${photo.events.length})</button>
+        </div>
+        <table class="data-table">
+            <thead><tr>
+                <th style="width:20px"></th>
+                <th style="width:80px">Action</th>
+                <th>Article</th>
+                <th style="width:180px">Wiki</th>
+                <th style="width:140px">Time</th>
+            </tr></thead>
+            <tbody>
+                ${photo.events.map(e=>`
+                    <tr>
+                        <td><span class="dot ${e.event_type}"></span></td>
+                        <td><span class="badge ${e.event_type==='added'?'badge-green':'badge-red'}">${e.event_type}</span></td>
+                        <td>${esc(e.article_title)}</td>
+                        <td class="muted">${esc(e.wiki)}</td>
+                        <td class="muted">${new Date(e.timestamp).toLocaleString()}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+        ` : ''}
     `;
 
-    // Store photo data for suggestions
-    window._currentPhoto = photo;
+    window._photo = photo;
 }
 
-async function getSuggestions() {
-    const btn = $('suggest-btn');
-    const container = $('suggestions');
-    const photo = window._currentPhoto;
-    if (!photo) return;
-
-    btn.disabled = true;
-    btn.textContent = 'Finding...';
-
+async function doSuggest() {
+    const btn=$('suggest-btn'), box=$('suggestions'), p=window._photo;
+    if(!p) return;
+    btn.disabled=true; btn.textContent='Finding...';
     try {
-        const data = await api('api/suggest', {
-            method: 'POST',
-            body: {
-                categories: photo.categories || [],
-                description: photo.description || '',
-                current_articles: photo.active_usages.map(u => u.article_title),
-            },
-        });
-
-        if (data.suggestions && data.suggestions.length) {
-            container.innerHTML = `
-                <div class="section-title" style="margin-top:0.5rem">Suggested Articles</div>
-                ${data.suggestions.map(s => `
-                    <div class="suggestion-item">
-                        <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(s.title)}"
-                           target="_blank">${esc(s.title)}</a>
-                    </div>
-                `).join('')}
-            `;
-        } else {
-            container.innerHTML = '<div style="font-size:0.8rem;color:#6b7280;margin-top:0.3rem">No suggestions found</div>';
-        }
-    } catch (err) {
-        container.innerHTML = '<div style="font-size:0.8rem;color:#ef4444;margin-top:0.3rem">Error: ' + esc(err.message) + '</div>';
-    } finally {
-        btn.style.display = 'none';
-    }
+        const d = await api('api/suggest',{method:'POST',body:{categories:p.categories||[],description:p.description||'',current_articles:p.active_usages.map(u=>u.article_title)}});
+        if(d.suggestions?.length) {
+            box.innerHTML = '<div style="margin-top:8px">'+d.suggestions.map(s=>`<div style="margin-top:4px"><a href="https://en.wikipedia.org/wiki/${encodeURIComponent(s.title)}" target="_blank" style="color:#3fb950;font-weight:500">${esc(s.title)}</a>${s.reason?'<div style="color:#8b949e;font-size:11px;margin-left:0">'+esc(s.reason)+'</div>':''}</div>`).join('')+'</div>';
+        } else box.innerHTML='<div style="color:#8b949e;margin-top:4px">No suggestions found</div>';
+    } catch(e) { box.innerHTML='<div style="color:#f85149;margin-top:4px">Error</div>'; }
+    finally { btn.style.display='none'; }
 }
 
-// ─── Init ───
 render();
 </script>
 </body>

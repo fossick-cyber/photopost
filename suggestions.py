@@ -1,85 +1,72 @@
-"""Suggestion engine: finds Wikipedia articles that could use a photo but don't yet."""
+"""Suggestion engine: uses OpenAI to suggest Wikipedia articles for a photo."""
 
-import httpx
+import json
+import os
 
-WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
-USER_AGENT = "PhotoPost/1.0 (https://github.com/photopost; photopost@example.com)"
+from openai import OpenAI
 
-
-def _wiki_get(client: httpx.Client, params: dict) -> dict:
-    params.setdefault("format", "json")
-    params.setdefault("formatversion", "2")
-    resp = client.get(WIKIPEDIA_API, params=params, headers={"User-Agent": USER_AGENT})
-    resp.raise_for_status()
-    return resp.json()
-
-
-def search_articles(client: httpx.Client, query: str, limit: int = 10) -> list[dict]:
-    """Search Wikipedia for articles matching a query string.
-
-    Returns list of {title, snippet, pageid}.
-    """
-    data = _wiki_get(client, {
-        "action": "query",
-        "list": "search",
-        "srsearch": query,
-        "srlimit": limit,
-        "srprop": "snippet",
-    })
-    return data.get("query", {}).get("search", [])
-
-
-def get_article_images(client: httpx.Client, title: str) -> list[str]:
-    """Get list of images used in a Wikipedia article."""
-    data = _wiki_get(client, {
-        "action": "query",
-        "titles": title,
-        "prop": "images",
-        "imlimit": "500",
-    })
-    pages = data.get("query", {}).get("pages", [])
-    if not pages:
-        return []
-    return [img["title"] for img in pages[0].get("images", [])]
+# Use the same key as other apps on this server
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 
 def suggest_articles_for_photo(
-    client: httpx.Client,
     categories: list[str],
     description: str,
-    current_articles: set[str],
+    current_articles: list[str],
 ) -> list[dict]:
-    """Suggest Wikipedia articles where a photo could be added.
+    """Use GPT to suggest Wikipedia articles that could use this photo.
 
-    Uses the photo's categories and description to search for relevant articles,
-    then filters out articles that already use the photo.
+    Args:
+        categories: Commons categories on the photo.
+        description: Photo description text.
+        current_articles: Articles already using this photo.
 
-    Returns list of {title, snippet, reason}.
+    Returns:
+        List of {title, reason} dicts.
     """
-    suggestions = []
-    seen_titles = set()
+    if not OPENAI_API_KEY:
+        return [{"title": "Error", "reason": "OPENAI_API_KEY not set"}]
 
-    # Build search queries from categories (most specific signal)
-    queries = []
-    for cat in categories[:5]:  # Top 5 categories
-        queries.append(cat)
+    client = OpenAI(api_key=OPENAI_API_KEY)
 
-    # Also try the description if it's meaningful
-    if description and len(description) > 10:
-        # Take first 100 chars as a search query
-        queries.append(description[:100])
+    cats_str = ", ".join(categories[:15]) if categories else "None"
+    current_str = ", ".join(current_articles[:20]) if current_articles else "None"
 
-    for query in queries:
-        results = search_articles(client, query, limit=5)
-        for result in results:
-            title = result["title"]
-            if title in seen_titles or title in current_articles:
-                continue
-            seen_titles.add(title)
-            suggestions.append({
-                "title": title,
-                "snippet": result.get("snippet", ""),
-                "reason": f"Matches category/description: {query}",
-            })
+    prompt = f"""You are a Wikipedia editor. A Wikimedia Commons photo has these details:
 
-    return suggestions[:10]  # Cap at 10 suggestions per photo
+Description: {description or 'No description'}
+Categories: {cats_str}
+Currently used in these articles: {current_str}
+
+Suggest 5-10 Wikipedia articles (English Wikipedia) where this photo could be added.
+Focus on articles that:
+- Are directly relevant to the photo subject
+- Don't already use this photo
+- Would genuinely benefit from this image
+- Are real, existing Wikipedia articles
+
+Return a JSON array of objects with "title" (exact Wikipedia article title) and "reason" (brief explanation why).
+Return ONLY the JSON array, no other text."""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=1000,
+        )
+
+        text = response.choices[0].message.content.strip()
+        # Strip markdown code fences if present
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+
+        suggestions = json.loads(text)
+        return suggestions[:10]
+    except json.JSONDecodeError:
+        return [{"title": "Parse error", "reason": "Could not parse AI response"}]
+    except Exception as e:
+        return [{"title": "Error", "reason": str(e)}]
