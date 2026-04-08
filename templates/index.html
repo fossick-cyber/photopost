@@ -659,13 +659,45 @@ async function renderPhotoDetail() {
 async function doSuggest() {
     const btn=$('suggest-btn'), box=$('suggestions'), p=window._photo;
     if(!p) return;
-    btn.disabled=true; btn.textContent='Finding...';
+    btn.disabled=true; btn.textContent='Asking AI...';
     try {
-        const d = await api('api/suggest',{method:'POST',body:{categories:p.categories||[],description:p.description||'',current_articles:p.active_usages.map(u=>u.article_title)}});
+        const d = await api('api/suggest',{method:'POST',body:{
+            categories: p.categories||[],
+            description: p.description||'',
+            filename: p.filename||'',
+            current_articles: p.active_usages.map(u=>u.article_title),
+            current_usages: p.active_usages.map(u=>({article_title:u.article_title, wiki:u.wiki})),
+        }});
         if(d.suggestions?.length) {
-            box.innerHTML = '<div style="margin-top:8px">'+d.suggestions.map(s=>`<div style="margin-top:4px"><a href="https://en.wikipedia.org/wiki/${encodeURIComponent(s.title)}" target="_blank" style="color:#3fb950;font-weight:500">${esc(s.title)}</a>${s.reason?'<div style="color:#8b949e;font-size:11px;margin-left:0">'+esc(s.reason)+'</div>':''}</div>`).join('')+'</div>';
+            box.innerHTML = `<div style="margin-top:12px">
+                <div style="font-size:11px;color:#8b949e;margin-bottom:6px">${d.suggestions.length} verified suggestions across ${[...new Set(d.suggestions.map(s=>s.lang))].length} languages</div>
+                <table class="data-table">
+                    <thead><tr>
+                        <th style="width:40px">Lang</th>
+                        <th>Article</th>
+                        <th>Reason</th>
+                        <th>Wikicode (click to copy)</th>
+                        <th style="width:60px">Edit</th>
+                    </tr></thead>
+                    <tbody>
+                        ${d.suggestions.map(s => {
+                            const wiki = s.wiki || 'en.wikipedia.org';
+                            const editUrl = 'https://'+wiki+'/wiki/'+encodeURIComponent((s.title||'').replace(/ /g,'_'))+'?action=edit';
+                            const articleUrl = 'https://'+wiki+'/wiki/'+encodeURIComponent((s.title||'').replace(/ /g,'_'));
+                            const wikicode = s.wikicode || '';
+                            return `<tr>
+                                <td><span class="badge badge-blue">${esc(s.lang||'en')}</span></td>
+                                <td><a href="${esc(articleUrl)}" target="_blank" style="color:#58a6ff;text-decoration:none">${esc((s.title||'').replace(/_/g,' '))}</a></td>
+                                <td class="muted" style="font-size:11px">${esc(s.reason||'')}</td>
+                                <td><code style="cursor:pointer;background:#161b22;padding:2px 6px;border-radius:3px;font-size:10px;word-break:break-all;display:block;max-width:300px" onclick="navigator.clipboard.writeText(this.textContent);this.style.background='#0f5323';setTimeout(()=>this.style.background='#161b22',1000)" title="Click to copy">${esc(wikicode)}</code></td>
+                                <td><a href="${esc(editUrl)}" target="_blank" class="btn btn-primary" style="font-size:10px;padding:2px 6px">Edit</a></td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>`;
         } else box.innerHTML='<div style="color:#8b949e;margin-top:4px">No suggestions found</div>';
-    } catch(e) { box.innerHTML='<div style="color:#f85149;margin-top:4px">Error</div>'; }
+    } catch(e) { box.innerHTML='<div style="color:#f85149;margin-top:4px">Error: '+esc(e.message)+'</div>'; }
     finally { btn.style.display='none'; }
 }
 

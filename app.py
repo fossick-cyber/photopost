@@ -970,10 +970,16 @@ def suggest():
     categories = data.get("categories", [])
     description = data.get("description", "")
     current_articles = data.get("current_articles", [])
+    filename = data.get("filename", "")
+    current_usages = data.get("current_usages", [])
     if not categories and not description:
         return jsonify({"suggestions": []})
     try:
-        results = suggest_articles_for_photo(categories, description, current_articles)
+        results = suggest_articles_for_photo(
+            categories, description, current_articles,
+            filename=filename,
+            current_usages=current_usages,
+        )
     except Exception as e:
         return jsonify({"error": f"Suggestion failed: {e}"}), 502
     return jsonify({"suggestions": results})
