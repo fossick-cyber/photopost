@@ -19,11 +19,14 @@ def _fix_thumb(url, filename):
     if not url:
         return url
     from urllib.parse import quote
-    # If the URL ends with an unencoded filename, fix it
-    suffix = "/300px-" + filename
-    encoded_suffix = "/300px-" + quote(filename, safe="")
-    if url.endswith(suffix) and suffix != encoded_suffix:
-        return url[:-len(suffix)] + encoded_suffix
+    # Try both space and underscore versions of the filename
+    for fn in (filename, filename.replace("_", " "), filename.replace(" ", "_")):
+        suffix = "/300px-" + fn
+        if url.endswith(suffix):
+            encoded_suffix = "/300px-" + quote(fn, safe="")
+            if suffix != encoded_suffix:
+                return url[:-len(suffix)] + encoded_suffix
+            return url
     return url
 
 engine, Session = init_db()
