@@ -616,71 +616,64 @@ def run_checklist(checklist_id):
                             raise
                 return {}
 
+            # Localized file namespace prefixes
+            _file_ns = (
+                "File:", "Image:", "Plik:", "Fichier:", "Datei:",
+                "Archivo:", "Ficheiro:", "Bestand:", "Fil:", "Tiedosto:",
+                "Dosya:", "Файл:", "ファイル:", "文件:", "파일:",
+            )
+            _ns_pattern = "|".join(_re.escape(ns.rstrip(":")) for ns in _file_ns)
+
+            def _strip_file_ns(name):
+                for ns in _file_ns:
+                    if name.startswith(ns):
+                        return name[len(ns):]
+                return name
+
             for item in cl.items:
                 prog["current"] = item.article_title
                 api_url = f"https://{item.wiki}/w/api.php"
 
                 try:
-
-                    # Method 1: prop=images (standard file references)
+                    # Single API call: images + wikitext in one request
                     data = _api_get(api_url, {
                         "action": "query",
                         "titles": item.article_title,
-                        "prop": "images",
+                        "prop": "images|revisions",
                         "imlimit": "500",
-                        "format": "json",
-                        "formatversion": "2",
-                    })
-                    pages = data.get("query", {}).get("pages", [])
-
-                    # Localized file namespace prefixes across Wikipedia languages
-                    _file_ns = (
-                        "File:", "Image:", "Plik:", "Fichier:", "Datei:",
-                        "Archivo:", "Ficheiro:", "Bestand:", "Fil:", "Tiedosto:",
-                        "Dosya:", "Файл:", "ファイル:", "文件:", "파일:",
-                    )
-                    def _strip_file_ns(name):
-                        for ns in _file_ns:
-                            if name.startswith(ns):
-                                return name[len(ns):]
-                        return name
-
-                    article_images = set()
-                    if pages and not pages[0].get("missing"):
-                        for img in pages[0].get("images", []):
-                            name = _strip_file_ns(img.get("title", ""))
-                            article_images.add(name)
-                            article_images.add(name.replace(" ", "_"))
-
-                    # Method 2: scan wikitext for filenames (catches templates, galleries, etc.)
-                    data2 = _api_get(api_url, {
-                        "action": "query",
-                        "titles": item.article_title,
-                        "prop": "revisions",
                         "rvprop": "content",
                         "rvslots": "main",
                         "rvlimit": "1",
                         "format": "json",
                         "formatversion": "2",
                     })
-                    pages2 = data2.get("query", {}).get("pages", [])
-                    if pages2 and not pages2[0].get("missing"):
-                        content = pages2[0].get("revisions", [{}])[0].get("slots", {}).get("main", {}).get("content", "")
-                        # Match all localized file namespace patterns: [[Plik:X]], [[Fichier:X]], etc.
-                        ns_pattern = "|".join(_re.escape(ns.rstrip(":")) for ns in _file_ns)
-                        for m in _re.findall(r'\[\[(?:' + ns_pattern + r'):([^|\]]+)', content, _re.IGNORECASE):
-                            article_images.add(m.strip())
-                            article_images.add(m.strip().replace(" ", "_"))
-                        # Find |image=X.jpg or |photo=X.jpg in templates
-                        for m in _re.findall(r'\|[^=]*(?:image|photo|logo|cover|map_image|picture)\s*=\s*([^\n|}{]+\.(?:jpg|jpeg|png|svg|gif))', content, _re.IGNORECASE):
-                            article_images.add(m.strip())
-                            article_images.add(m.strip().replace(" ", "_"))
+                    pages = data.get("query", {}).get("pages", [])
 
-                    # Find which tracked photos are on this article
+                    article_images = set()
+                    if pages and not pages[0].get("missing"):
+                        page = pages[0]
+
+                        # From prop=images
+                        for img in page.get("images", []):
+                            name = _strip_file_ns(img.get("title", ""))
+                            article_images.add(name)
+                            article_images.add(name.replace(" ", "_"))
+
+                        # From wikitext
+                        revs = page.get("revisions", [])
+                        if revs:
+                            content = revs[0].get("slots", {}).get("main", {}).get("content", "")
+                            for m in _re.findall(r'\[\[(?:' + _ns_pattern + r'):([^|\]]+)', content, _re.IGNORECASE):
+                                article_images.add(m.strip())
+                                article_images.add(m.strip().replace(" ", "_"))
+                            for m in _re.findall(r'\|[^=]*(?:image|photo|logo|cover|map_image|picture)\s*=\s*([^\n|}{]+\.(?:jpg|jpeg|png|svg|gif))', content, _re.IGNORECASE):
+                                article_images.add(m.strip())
+                                article_images.add(m.strip().replace(" ", "_"))
+
+                    # Match against tracked photos
                     matched = []
                     seen = set()
                     for img_name in article_images:
-                        # Try exact match, then lowercase fallback
                         match = user_files.get(img_name) or user_files.get(img_name.lower())
                         if match and img_name.lower() not in seen:
                             fname, uname = match
@@ -703,10 +696,8 @@ def run_checklist(checklist_id):
                     prog["errors"] += 1
 
                 prog["checked"] += 1
-                # Commit each item so frontend sees live results
                 check_db.commit()
-                # Delay to avoid Wikipedia rate limiting (429)
-                _time.sleep(0.5)
+                _time.sleep(0.2)
 
             cl.last_checked = now
             check_db.commit()
