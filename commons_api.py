@@ -38,40 +38,118 @@ def get_user_uploads(
     since: str | None = None,
     on_progress: callable = None,
 ) -> list[dict]:
-    """Fetch files uploaded by a Commons user.
+    """Fetch files associated with a Commons user.
 
-    Args:
-        since: ISO timestamp — only fetch uploads after this date.
-        on_progress: callback(fetched_so_far) called after each page.
+    Uses usercontribs (namespace 6) to find all files the user has
+    uploaded or edited, then fetches image info for each.
+    This matches Special:ListFiles and catches files that allimages misses
+    (e.g. files transferred from other accounts or re-uploaded).
     """
-    uploads = []
+    # Normalize: Commons uses spaces in titles but underscores in URLs.
+    # We store with underscores (matching allimages output).
+    def norm(name):
+        return name.replace(" ", "_")
+
+    # Step 1: Get all filenames via usercontribs + allimages
+    filenames = set()
+
+    # usercontribs catches files the user edited (including re-uploads)
     params = {
+        "action": "query",
+        "list": "usercontribs",
+        "ucuser": username,
+        "ucnamespace": "6",
+        "uclimit": "500",
+        "ucprop": "title|timestamp",
+    }
+    while len(filenames) < limit:
+        data = _get(client, params)
+        contribs = data.get("query", {}).get("usercontribs", [])
+        if not contribs:
+            break
+        for c in contribs:
+            filenames.add(norm(c["title"].removeprefix("File:")))
+        if on_progress:
+            on_progress(len(filenames))
+        cont = data.get("continue")
+        if not cont:
+            break
+        params["uccontinue"] = cont["uccontinue"]
+
+    # allimages catches files where user is the registered uploader
+    ai_params = {
         "action": "query",
         "list": "allimages",
         "aisort": "timestamp",
         "aidir": "descending",
         "aiuser": username,
-        "ailimit": min(limit, 500),
+        "ailimit": "500",
         "aiprop": "timestamp|url|size|mime",
     }
-    if since:
-        params["aistart"] = since
-        params["aidir"] = "ascending"
-
-    while len(uploads) < limit:
-        data = _get(client, params)
+    while True:
+        data = _get(client, ai_params)
         images = data.get("query", {}).get("allimages", [])
         if not images:
             break
-        uploads.extend(images)
-        if on_progress:
-            on_progress(len(uploads))
+        for img in images:
+            filenames.add(norm(img["name"]))
         cont = data.get("continue")
         if not cont:
             break
-        params["aicontinue"] = cont["aicontinue"]
+        ai_params["aicontinue"] = cont["aicontinue"]
 
-    return uploads[:limit]
+    # logevents catches upload events (files uploaded by user)
+    le_params = {
+        "action": "query",
+        "list": "logevents",
+        "letype": "upload",
+        "leuser": username,
+        "lelimit": "500",
+    }
+    while True:
+        data = _get(client, le_params)
+        events = data.get("query", {}).get("logevents", [])
+        if not events:
+            break
+        for ev in events:
+            filenames.add(norm(ev.get("title", "").removeprefix("File:")))
+        cont = data.get("continue")
+        if not cont:
+            break
+        le_params["lecontinue"] = cont["lecontinue"]
+
+    if on_progress:
+        on_progress(len(filenames))
+
+    # Step 2: Fetch image info for all files in batches
+    filenames_list = sorted(filenames)[:limit]
+    uploads = []
+
+    for i in range(0, len(filenames_list), BATCH_SIZE):
+        batch = filenames_list[i:i + BATCH_SIZE]
+        titles = "|".join(f"File:{f}" for f in batch)
+        data = _get(client, {
+            "action": "query",
+            "titles": titles,
+            "prop": "imageinfo",
+            "iiprop": "timestamp|url|size|mime",
+        })
+        for page in data.get("query", {}).get("pages", []):
+            if page.get("missing"):
+                continue
+            ii = page.get("imageinfo", [{}])[0] if page.get("imageinfo") else {}
+            name = page.get("title", "").removeprefix("File:")
+            uploads.append({
+                "name": name,
+                "timestamp": ii.get("timestamp", ""),
+                "url": ii.get("url", ""),
+                "size": ii.get("size", 0),
+                "mime": ii.get("mime", ""),
+            })
+        if on_progress:
+            on_progress(len(filenames_list))
+
+    return uploads
 
 
 def _fetch_batch_details(batch: list[str]) -> dict:

@@ -392,8 +392,22 @@ def missing_languages(photo_id):
                 seen.add(key)
                 deduped.append(m)
 
-        # Sort by language code
-        deduped.sort(key=lambda x: x['lang'])
+        # Sort by number of speakers (approximate, top ~60 languages)
+        lang_rank = {
+            'en': 1, 'zh': 2, 'hi': 3, 'es': 4, 'fr': 5, 'ar': 6,
+            'bn': 7, 'pt': 8, 'ru': 9, 'ja': 10, 'pa': 11, 'de': 12,
+            'jv': 13, 'ko': 14, 'vi': 15, 'te': 16, 'mr': 17, 'ta': 18,
+            'tr': 19, 'ur': 20, 'it': 21, 'th': 22, 'gu': 23, 'pl': 24,
+            'ml': 25, 'kn': 26, 'uk': 27, 'my': 28, 'fa': 29, 'ha': 30,
+            'nl': 31, 'or': 32, 'ro': 33, 'ms': 34, 'hu': 35, 'az': 36,
+            'el': 37, 'cs': 38, 'sv': 39, 'be': 40, 'da': 41, 'fi': 42,
+            'no': 43, 'nb': 43, 'nn': 43, 'sk': 44, 'bg': 45, 'sr': 46,
+            'he': 47, 'ca': 48, 'hr': 49, 'lt': 50, 'sl': 51, 'lv': 52,
+            'et': 53, 'id': 34, 'tl': 55, 'sw': 56, 'ne': 57, 'si': 58,
+            'af': 59, 'ga': 60, 'cy': 61, 'eu': 62, 'gl': 63,
+            'simple': 1,  # Simple English — same audience as en
+        }
+        deduped.sort(key=lambda x: lang_rank.get(x['lang'], 999))
 
         return jsonify({
             'missing': deduped,
