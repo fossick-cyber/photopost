@@ -51,6 +51,7 @@ class Photo(Base):
 
     __table_args__ = (
         Index("ix_photos_user_filename", "user_id", "filename", unique=True),
+        Index("ix_photos_user_id", "user_id"),
     )
 
 
@@ -71,6 +72,8 @@ class PhotoUsage(Base):
     __table_args__ = (
         Index("ix_usages_photo_article", "photo_id", "article_title", "wiki", unique=True),
         Index("ix_usages_active", "is_active"),
+        Index("ix_usages_photo_active", "photo_id", "is_active"),
+        Index("ix_usages_active_wiki", "is_active", "wiki"),
     )
 
 
