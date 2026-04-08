@@ -164,7 +164,15 @@ def get_file_details(
             if on_progress:
                 on_progress(completed, len(batches))
 
-    return results
+    # Normalize keys: API returns spaces but upload list uses underscores.
+    # Add underscore-keyed aliases so lookups work either way.
+    normalized = {}
+    for key, val in results.items():
+        normalized[key] = val
+        alt_key = key.replace(" ", "_")
+        if alt_key != key:
+            normalized[alt_key] = val
+    return normalized
 
 
 def get_image_description(imageinfo: dict) -> str:

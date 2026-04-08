@@ -156,16 +156,39 @@ def user_photos(user_id):
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        photos = (
-            db.query(Photo)
-            .filter_by(user_id=user_id)
-            .order_by(Photo.upload_date.desc())
-            .all()
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 48))
+        sort = request.args.get("sort", "date")  # date, usages, name
+        offset = (page - 1) * per_page
+
+        total = db.query(Photo).filter_by(user_id=user_id).count()
+
+        # Use a subquery for usage count to avoid loading all usages
+        from sqlalchemy import func, case
+        usage_count = (
+            db.query(PhotoUsage.photo_id, func.count(PhotoUsage.id).label("cnt"))
+            .filter(PhotoUsage.is_active == True)
+            .group_by(PhotoUsage.photo_id)
+            .subquery()
         )
 
+        query = (
+            db.query(Photo, func.coalesce(usage_count.c.cnt, 0).label("usage_count"))
+            .outerjoin(usage_count, Photo.id == usage_count.c.photo_id)
+            .filter(Photo.user_id == user_id)
+        )
+
+        if sort == "usages":
+            query = query.order_by(func.coalesce(usage_count.c.cnt, 0).desc())
+        elif sort == "name":
+            query = query.order_by(Photo.filename)
+        else:
+            query = query.order_by(Photo.upload_date.desc())
+
+        rows = query.offset(offset).limit(per_page).all()
+
         result = []
-        for p in photos:
-            active_usages = [u for u in p.usages if u.is_active]
+        for p, ucount in rows:
             result.append({
                 "id": p.id,
                 "filename": p.filename,
@@ -174,18 +197,16 @@ def user_photos(user_id):
                 "full_url": p.full_url,
                 "upload_date": p.upload_date.isoformat() if p.upload_date else None,
                 "categories": json.loads(p.categories) if p.categories else [],
-                "usage_count": len(active_usages),
-                "usages": [
-                    {
-                        "article_title": u.article_title,
-                        "wiki": u.wiki,
-                        "article_url": u.article_url,
-                        "first_seen": u.first_seen.isoformat() if u.first_seen else None,
-                    }
-                    for u in active_usages
-                ],
+                "usage_count": ucount,
             })
-        return jsonify({"username": user.username, "photos": result, "total": len(result)})
+        return jsonify({
+            "username": user.username,
+            "photos": result,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "pages": (total + per_page - 1) // per_page,
+        })
     finally:
         db.close()
 
