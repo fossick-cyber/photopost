@@ -585,25 +585,45 @@ def run_checklist(checklist_id):
         check_db = Session()
         try:
             cl = check_db.get(Checklist, checklist_id)
-            # Load ALL tracked users' photos
+            # Load ALL tracked users' photos with multiple lookup keys
             user_files = {}  # normalized_name -> (filename, username)
             for p in check_db.query(Photo).join(TrackedUser).all():
-                user_files[p.filename] = (p.filename, p.user.username)
-                user_files[p.filename.replace("_", " ")] = (p.filename, p.user.username)
+                for variant in (p.filename, p.filename.replace("_", " ")):
+                    user_files[variant] = (p.filename, p.user.username)
+                    # Also store lowercase for case-insensitive fallback
+                    user_files[variant.lower()] = (p.filename, p.user.username)
+
+            import re as _re
+            import time as _time
 
             client = httpx.Client(headers={"User-Agent": "PhotoPost/1.0"}, timeout=15.0)
             now = datetime.now(timezone.utc)
             prog = _checklist_progress[checklist_id]
+
+            def _api_get(url, params, retries=3):
+                """GET with retry on empty/error responses."""
+                for attempt in range(retries):
+                    try:
+                        resp = client.get(url, params=params)
+                        if resp.status_code == 200 and resp.text.strip():
+                            return resp.json()
+                        # Rate limited or empty — wait and retry
+                        _time.sleep(1 + attempt)
+                    except Exception:
+                        if attempt < retries - 1:
+                            _time.sleep(1 + attempt)
+                        else:
+                            raise
+                return {}
 
             for item in cl.items:
                 prog["current"] = item.article_title
                 api_url = f"https://{item.wiki}/w/api.php"
 
                 try:
-                    import re as _re
 
                     # Method 1: prop=images (standard file references)
-                    resp = client.get(api_url, params={
+                    data = _api_get(api_url, {
                         "action": "query",
                         "titles": item.article_title,
                         "prop": "images",
@@ -611,18 +631,29 @@ def run_checklist(checklist_id):
                         "format": "json",
                         "formatversion": "2",
                     })
-                    data = resp.json()
                     pages = data.get("query", {}).get("pages", [])
+
+                    # Localized file namespace prefixes across Wikipedia languages
+                    _file_ns = (
+                        "File:", "Image:", "Plik:", "Fichier:", "Datei:",
+                        "Archivo:", "Ficheiro:", "Bestand:", "Fil:", "Tiedosto:",
+                        "Dosya:", "Файл:", "ファイル:", "文件:", "파일:",
+                    )
+                    def _strip_file_ns(name):
+                        for ns in _file_ns:
+                            if name.startswith(ns):
+                                return name[len(ns):]
+                        return name
 
                     article_images = set()
                     if pages and not pages[0].get("missing"):
                         for img in pages[0].get("images", []):
-                            name = img.get("title", "").removeprefix("File:")
+                            name = _strip_file_ns(img.get("title", ""))
                             article_images.add(name)
                             article_images.add(name.replace(" ", "_"))
 
                     # Method 2: scan wikitext for filenames (catches templates, galleries, etc.)
-                    resp2 = client.get(api_url, params={
+                    data2 = _api_get(api_url, {
                         "action": "query",
                         "titles": item.article_title,
                         "prop": "revisions",
@@ -632,12 +663,12 @@ def run_checklist(checklist_id):
                         "format": "json",
                         "formatversion": "2",
                     })
-                    data2 = resp2.json()
                     pages2 = data2.get("query", {}).get("pages", [])
                     if pages2 and not pages2[0].get("missing"):
                         content = pages2[0].get("revisions", [{}])[0].get("slots", {}).get("main", {}).get("content", "")
-                        # Find [[File:X]] and [[Image:X]]
-                        for m in _re.findall(r'\[\[(?:File|Image):([^|\]]+)', content, _re.IGNORECASE):
+                        # Match all localized file namespace patterns: [[Plik:X]], [[Fichier:X]], etc.
+                        ns_pattern = "|".join(_re.escape(ns.rstrip(":")) for ns in _file_ns)
+                        for m in _re.findall(r'\[\[(?:' + ns_pattern + r'):([^|\]]+)', content, _re.IGNORECASE):
                             article_images.add(m.strip())
                             article_images.add(m.strip().replace(" ", "_"))
                         # Find |image=X.jpg or |photo=X.jpg in templates
@@ -649,12 +680,12 @@ def run_checklist(checklist_id):
                     matched = []
                     seen = set()
                     for img_name in article_images:
-                        if img_name in user_files and img_name not in seen:
-                            fname, uname = user_files[img_name]
+                        # Try exact match, then lowercase fallback
+                        match = user_files.get(img_name) or user_files.get(img_name.lower())
+                        if match and img_name.lower() not in seen:
+                            fname, uname = match
                             matched.append({"file": fname, "user": uname})
-                            seen.add(img_name)
-                            seen.add(img_name.replace(" ", "_"))
-                            seen.add(img_name.replace("_", " "))
+                            seen.add(img_name.lower())
 
                     item.status = "found" if matched else "missing"
                     item.found_files = json.dumps(matched)
@@ -674,6 +705,8 @@ def run_checklist(checklist_id):
                 prog["checked"] += 1
                 # Commit each item so frontend sees live results
                 check_db.commit()
+                # Delay to avoid Wikipedia rate limiting (429)
+                _time.sleep(0.5)
 
             cl.last_checked = now
             check_db.commit()
