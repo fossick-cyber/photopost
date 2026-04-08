@@ -624,18 +624,12 @@ def run_checklist(checklist_id):
                             raise
                 return {}
 
-            # Localized file namespace prefixes
-            _file_ns = (
-                "File:", "Image:", "Plik:", "Fichier:", "Datei:",
-                "Archivo:", "Ficheiro:", "Bestand:", "Fil:", "Tiedosto:",
-                "Dosya:", "Файл:", "ファイル:", "文件:", "파일:",
-            )
-            _ns_pattern = "|".join(_re.escape(ns.rstrip(":")) for ns in _file_ns)
-
             def _strip_file_ns(name):
-                for ns in _file_ns:
-                    if name.startswith(ns):
-                        return name[len(ns):]
+                """Strip any namespace prefix (File:, Plik:, Delwedd:, etc).
+                The images API always returns <Namespace>:<Filename>, so just
+                strip everything up to the first colon."""
+                if ":" in name:
+                    return name.split(":", 1)[1]
                 return name
 
             def _match_images(article_images):
@@ -736,7 +730,8 @@ def run_checklist(checklist_id):
                         if pages2 and not pages2[0].get("missing"):
                             content = pages2[0].get("revisions", [{}])[0].get("slots", {}).get("main", {}).get("content", "")
                             article_images = set()
-                            for m in _re.findall(r'\[\[(?:' + _ns_pattern + r'):([^|\]]+)', content, _re.IGNORECASE):
+                            # Match [[AnyNamespace:filename.ext|...]] — catches File, Plik, Delwedd, etc.
+                            for m in _re.findall(r'\[\[[A-Za-z\u00C0-\u024F\u0400-\u04FF\u3000-\u9FFF]+:([^|\]]+\.(?:jpg|jpeg|png|svg|gif|tif|tiff|webp))', content, _re.IGNORECASE):
                                 article_images.add(m.strip())
                                 article_images.add(m.strip().replace(" ", "_"))
                             for m in _re.findall(r'\|[^=]*(?:image|photo|logo|cover|map_image|picture)\s*=\s*([^\n|}{]+\.(?:jpg|jpeg|png|svg|gif))', content, _re.IGNORECASE):
@@ -819,7 +814,8 @@ def check_removal():
         """Find all image references in wikitext."""
         found = set()
         # [[File:Name.jpg|...]] and [[Image:Name.jpg|...]]
-        for m in re.findall(r'\[\[(?:File|Image):([^|\]]+)', text, re.IGNORECASE):
+        # Match any namespace prefix (File, Plik, Delwedd, etc.) followed by image filename
+        for m in re.findall(r'\[\[[A-Za-z\u00C0-\u024F\u0400-\u04FF\u3000-\u9FFF]+:([^|\]]+\.(?:jpg|jpeg|png|svg|gif|tif|tiff|webp))', text, re.IGNORECASE):
             found.add(m.strip())
         # |image= or |photo= or |logo= in templates
         for m in re.findall(r'\|[^=]*(?:image|photo|logo|cover)\s*=\s*([^\n|}{]+\.(?:jpg|jpeg|png|svg|gif))', text, re.IGNORECASE):
