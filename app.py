@@ -21,9 +21,9 @@ def _fix_thumb(url, filename):
     # Wikimedia thumbnails always use underscores, not spaces or %20
     fn_underscored = filename.replace(" ", "_")
     for fn in (filename, filename.replace("_", " "), fn_underscored):
-        suffix = "/300px-" + fn
+        suffix = "/330px-" + fn
         if url.endswith(suffix):
-            return url[:-len(suffix)] + "/300px-" + fn_underscored
+            return url[:-len(suffix)] + "/330px-" + fn_underscored
     return url
 
 engine, Session = init_db()
@@ -33,6 +33,13 @@ _polls_lock = threading.Lock()
 
 # These users cannot be deleted from the UI
 PROTECTED_USERS = {"diliff", "FossickUK", "FrogsLegs71", "Cyr Photos"}
+
+
+@app.after_request
+def add_no_cache(response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.route("/")

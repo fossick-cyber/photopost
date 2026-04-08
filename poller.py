@@ -84,7 +84,7 @@ def poll_user(db: Session, user: TrackedUser, limit: int = 10000) -> dict:
         thumb_url = full_url
         if thumb_url:
             thumb_url = thumb_url.replace("/commons/", "/commons/thumb/", 1)
-            thumb_url += "/300px-" + filename.replace(" ", "_")
+            thumb_url += "/330px-" + filename.replace(" ", "_")
 
         upload_date = None
         ts = img.get("timestamp")
