@@ -6,7 +6,7 @@ import threading
 from flask import Flask, render_template, request, jsonify
 
 from models import init_db, TrackedUser, Photo, PhotoUsage, UsageEvent
-from poller import poll_user
+from poller import poll_user, poll_progress
 from suggestions import suggest_articles_for_photo
 
 app = Flask(__name__)
@@ -135,9 +135,11 @@ def poll_status(user_id):
             return jsonify({"error": "User not found"}), 404
         is_polling = user.username in _active_polls
         result = app.config.pop(f"poll_result_{user_id}", None)
+        progress = poll_progress.get(user_id, {})
         return jsonify({
             "is_polling": is_polling,
             "result": result,
+            "progress": progress if is_polling else {},
             "last_polled": user.last_polled.isoformat() if user.last_polled else None,
         })
     finally:

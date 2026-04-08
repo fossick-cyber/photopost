@@ -276,10 +276,30 @@
             padding: 0.6rem 1rem;
             border-radius: 6px;
             margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+        .polling-banner .progress-top {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            font-size: 0.85rem;
+            margin-bottom: 0.4rem;
+        }
+        .progress-bar-bg {
+            height: 6px;
+            background: #0f1117;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: #3b82f6;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        .progress-detail {
+            font-size: 0.78rem;
+            color: #93c5fd;
+            margin-top: 0.3rem;
         }
         .poll-result {
             background: #14532d;
@@ -457,7 +477,15 @@ async function renderUserDetail() {
     const pollResult = statusData.result;
 
     app.innerHTML = `
-        ${isPolling ? '<div class="polling-banner"><span class="spinner"></span> Polling Commons API for ' + esc(photosData.username) + '...</div>' : ''}
+        ${isPolling ? `<div class="polling-banner" id="poll-banner">
+            <div class="progress-top">
+                <span class="spinner"></span>
+                <span>Polling Commons API for ${esc(photosData.username)}...</span>
+                <span id="poll-pct" style="margin-left:auto;font-weight:600">${statusData.progress?.pct || 0}%</span>
+            </div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" id="poll-bar" style="width:${statusData.progress?.pct || 0}%"></div></div>
+            <div class="progress-detail" id="poll-detail">${esc(statusData.progress?.detail || 'Starting...')}</div>
+        </div>` : ''}
         ${pollResult && !pollResult.error ? `
             <div class="poll-result">
                 Poll complete: ${pollResult.total_photos} photos scanned,
@@ -531,8 +559,16 @@ async function renderUserDetail() {
                 clearInterval(pollTimers['detail_' + id]);
                 delete pollTimers['detail_' + id];
                 render();
+            } else if (s.progress) {
+                // Update progress bar in-place
+                const bar = $('poll-bar');
+                const pct = $('poll-pct');
+                const detail = $('poll-detail');
+                if (bar) bar.style.width = (s.progress.pct || 0) + '%';
+                if (pct) pct.textContent = (s.progress.pct || 0) + '%';
+                if (detail) detail.textContent = s.progress.detail || '';
             }
-        }, 3000);
+        }, 2000);
     }
 }
 

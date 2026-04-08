@@ -14,25 +14,49 @@ from commons_api import (
 )
 from models import Photo, PhotoUsage, TrackedUser, UsageEvent
 
+# Shared progress state: { user_id: { stage, detail, pct } }
+poll_progress = {}
 
-def poll_user(db: Session, user: TrackedUser, limit: int = 500) -> dict:
-    """Run a full poll for a tracked user.
 
-    Fetches uploads from Commons, diffs usage against DB, and logs events.
-
-    Returns summary dict with counts of what changed.
-    """
+def poll_user(db: Session, user: TrackedUser, limit: int = 10000) -> dict:
+    """Run a full poll for a tracked user with progress reporting."""
     client = make_client()
     now = datetime.now(timezone.utc)
+    uid = user.id
 
-    # 1. Fetch all uploads
-    uploads = get_user_uploads(client, user.username, limit=limit)
+    def update(stage, detail="", pct=0):
+        poll_progress[uid] = {"stage": stage, "detail": detail, "pct": int(pct)}
 
-    # 2. Get details for all files (batched)
+    # 1. Fetch uploads
+    update("uploads", "Starting upload fetch...", 0)
+
+    def on_upload_progress(count):
+        update("uploads", f"Fetched {count} uploads...", 10)
+
+    uploads = get_user_uploads(
+        client, user.username, limit=limit, on_progress=on_upload_progress,
+    )
+    update("uploads", f"Found {len(uploads)} uploads", 15)
+
+    if not uploads:
+        user.last_polled = now
+        db.commit()
+        poll_progress.pop(uid, None)
+        return {"new_photos": 0, "new_usages": 0, "removed_usages": 0,
+                "total_photos": 0, "total_usages": 0}
+
+    # 2. Fetch file details (parallel)
     filenames = [img["name"] for img in uploads]
-    details = get_file_details(client, filenames)
 
-    # 3. Build lookup of existing photos in DB
+    def on_details_progress(done, total):
+        pct = 15 + int((done / max(total, 1)) * 60)
+        update("details", f"Fetching details: batch {done}/{total}", pct)
+
+    update("details", f"Fetching details for {len(filenames)} files...", 15)
+    details = get_file_details(filenames, on_progress=on_details_progress)
+
+    # 3. Process & diff
+    update("processing", "Comparing with database...", 80)
     existing_photos = {p.filename: p for p in user.photos}
 
     stats = {
@@ -43,7 +67,11 @@ def poll_user(db: Session, user: TrackedUser, limit: int = 500) -> dict:
         "total_usages": 0,
     }
 
-    for img in uploads:
+    for i, img in enumerate(uploads):
+        if i % 100 == 0:
+            pct = 80 + int((i / len(uploads)) * 18)
+            update("processing", f"Processing photo {i+1}/{len(uploads)}", pct)
+
         filename = img["name"]
         file_key = f"File:{filename}"
         detail = details.get(file_key, {})
@@ -52,14 +80,12 @@ def poll_user(db: Session, user: TrackedUser, limit: int = 500) -> dict:
         imageinfo = detail.get("imageinfo", {})
         description = get_image_description(imageinfo)
 
-        # Build thumb URL
         full_url = img.get("url", "")
         thumb_url = full_url
         if thumb_url:
             thumb_url = thumb_url.replace("/commons/", "/commons/thumb/", 1)
             thumb_url += "/300px-" + filename
 
-        # Parse upload timestamp
         upload_date = None
         ts = img.get("timestamp")
         if ts:
@@ -68,7 +94,6 @@ def poll_user(db: Session, user: TrackedUser, limit: int = 500) -> dict:
             except ValueError:
                 pass
 
-        # 3a. Upsert photo
         photo = existing_photos.get(filename)
         if photo is None:
             photo = Photo(
@@ -84,35 +109,30 @@ def poll_user(db: Session, user: TrackedUser, limit: int = 500) -> dict:
                 first_seen=now,
             )
             db.add(photo)
-            db.flush()  # Get photo.id
+            db.flush()
             stats["new_photos"] += 1
         else:
-            # Update mutable fields
             photo.description = description
             photo.thumb_url = thumb_url
             photo.categories = json.dumps(categories)
 
-        # 3b. Diff usages
+        # Diff usages
         current_api_usages = set()
         for u in detail.get("global_usage", []):
             key = (u.get("title", ""), u.get("wiki", ""))
             current_api_usages.add(key)
 
-        # Existing active usages in DB for this photo
         existing_usages = {
             (u.article_title, u.wiki): u
             for u in photo.usages
             if u.is_active
         }
 
-        # Find new usages
         for title, wiki in current_api_usages:
             stats["total_usages"] += 1
             if (title, wiki) in existing_usages:
-                # Still active — update last_seen
                 existing_usages[(title, wiki)].last_seen = now
             else:
-                # Check if it was previously removed and is back
                 old_usage = None
                 for u in photo.usages:
                     if u.article_title == title and u.wiki == wiki and not u.is_active:
@@ -134,7 +154,6 @@ def poll_user(db: Session, user: TrackedUser, limit: int = 500) -> dict:
                     )
                     db.add(usage)
 
-                # Log add event
                 db.add(UsageEvent(
                     photo_id=photo.id,
                     article_title=title,
@@ -144,7 +163,6 @@ def poll_user(db: Session, user: TrackedUser, limit: int = 500) -> dict:
                 ))
                 stats["new_usages"] += 1
 
-        # Find removed usages
         for (title, wiki), usage in existing_usages.items():
             if (title, wiki) not in current_api_usages:
                 usage.is_active = False
@@ -157,8 +175,9 @@ def poll_user(db: Session, user: TrackedUser, limit: int = 500) -> dict:
                 ))
                 stats["removed_usages"] += 1
 
-    # 4. Update last_polled
+    update("saving", "Saving to database...", 98)
     user.last_polled = now
     db.commit()
 
+    update("done", "Complete", 100)
     return stats
