@@ -443,8 +443,12 @@ def list_checklists():
 def create_checklist():
     """Create a checklist from uploaded article list.
 
-    Accepts JSON: { name, articles: ["title", "wiki:title", ...] }
+    Accepts JSON: { name, articles: ["title", "wiki:title", "https://en.wikipedia.org/wiki/...", ...] }
+    Supports plain titles, wiki:title format, and full Wikipedia URLs.
     """
+    import re
+    from urllib.parse import unquote
+
     db = Session()
     try:
         data = request.get_json()
@@ -458,15 +462,33 @@ def create_checklist():
         db.add(checklist)
         db.flush()
 
+        seen = set()  # deduplicate
+
         for entry in raw_articles:
+            wiki = "en.wikipedia.org"
+            title = ""
+
             if isinstance(entry, str):
-                if ":" in entry and ".wikipedia.org" in entry.split(":")[0]:
+                entry = entry.strip()
+                if not entry:
+                    continue
+
+                # Match Wikipedia URLs:
+                # https://en.wikipedia.org/wiki/Article_Name
+                # https://fr.wikipedia.org/wiki/Nom_de_l'article
+                url_match = re.match(
+                    r'https?://([a-z\-]+\.wikipedia\.org)/wiki/(.+?)(?:\?.*)?(?:#.*)?$',
+                    entry,
+                )
+                if url_match:
+                    wiki = url_match.group(1)
+                    title = unquote(url_match.group(2))
+                elif ":" in entry and ".wikipedia.org" in entry.split(":")[0]:
                     wiki, title = entry.split(":", 1)
                     wiki = wiki.strip()
                     title = title.strip()
                 else:
-                    wiki = "en.wikipedia.org"
-                    title = entry.strip()
+                    title = entry
             else:
                 title = entry.get("title", "").strip()
                 wiki = entry.get("wiki", "en.wikipedia.org").strip()
@@ -475,6 +497,12 @@ def create_checklist():
                 continue
 
             title = title.replace("_", " ")
+
+            # Deduplicate
+            key = (wiki, title)
+            if key in seen:
+                continue
+            seen.add(key)
 
             item = ChecklistItem(
                 checklist_id=checklist.id,
