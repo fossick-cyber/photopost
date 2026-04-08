@@ -3,10 +3,85 @@ Skips Wikipedia verification — just filters against known usages in our DB."""
 
 import json
 import os
+import time
+from collections import defaultdict
 
+import httpx
 from openai import OpenAI
 
 USER_AGENT = "PhotoPost/1.0 (https://github.com/fossick-cyber/photopost)"
+
+
+def _verify_and_resolve(suggestions: list[dict]) -> list[dict]:
+    """Batch-verify suggestions exist on their target wikis.
+    Resolves redirects to actual article titles. Returns only verified ones."""
+    if not suggestions:
+        return []
+
+    client = httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=15)
+    verified = []
+
+    # Group by wiki for batching
+    by_wiki = defaultdict(list)
+    for s in suggestions:
+        by_wiki[s.get("wiki", "en.wikipedia.org")].append(s)
+
+    for wiki, items in by_wiki.items():
+        api_url = f"https://{wiki}/w/api.php"
+
+        for i in range(0, len(items), 50):
+            batch = items[i:i + 50]
+            titles = "|".join(s["title"] for s in batch)
+
+            try:
+                time.sleep(0.3)
+                resp = client.get(api_url, params={
+                    "action": "query",
+                    "titles": titles,
+                    "redirects": "1",  # resolve redirects
+                    "format": "json",
+                    "formatversion": "2",
+                    "maxlag": "5",
+                })
+                if resp.status_code != 200:
+                    continue
+
+                data = resp.json()
+                query = data.get("query", {})
+
+                # Build redirect map: from -> to
+                redirect_map = {}
+                for r in query.get("redirects", []):
+                    redirect_map[r["from"]] = r["to"]
+
+                # Build normalization map
+                norm_map = {}
+                for n in query.get("normalized", []):
+                    norm_map[n["from"]] = n["to"]
+
+                # Build set of existing pages
+                existing_pages = set()
+                for page in query.get("pages", []):
+                    if not page.get("missing"):
+                        existing_pages.add(page["title"])
+
+                for s in batch:
+                    title = s["title"]
+                    # Follow normalization
+                    resolved = norm_map.get(title, title)
+                    # Follow redirect
+                    resolved = redirect_map.get(resolved, resolved)
+
+                    if resolved in existing_pages:
+                        s["title"] = resolved  # Use canonical/redirect target
+                        if resolved != title.replace("_", " "):
+                            s["redirected_from"] = title
+                        verified.append(s)
+
+            except Exception:
+                continue
+
+    return verified
 
 
 def _get_api_key():
@@ -74,7 +149,7 @@ The photo is ALREADY used on these articles (do NOT suggest these):
 {usage_str}
 {exclude_str}
 
-Suggest exactly {count} Wikipedia articles where this photo should be added. Include articles in MULTIPLE LANGUAGES — especially major languages like Spanish, French, German, Portuguese, Russian, Italian, Dutch, Polish, and others relevant to the subject.
+Suggest {count + 5} Wikipedia articles where this photo should be added. Suggest more than asked since some may not exist. Include articles in MULTIPLE LANGUAGES — especially major languages like Spanish, French, German, Portuguese, Russian, Italian, Dutch, Polish, and others relevant to the subject.
 
 For each suggestion provide:
 - "title": exact article title in that language's Wikipedia
@@ -129,7 +204,10 @@ Return ONLY a JSON array of {count} objects. No other text."""
             if key not in current_set and key2 not in current_set and s["title"].lower() not in existing_set:
                 filtered.append(s)
 
-        return filtered[:count]
+        # Verify articles exist and resolve redirects
+        verified = _verify_and_resolve(filtered)
+
+        return verified[:count]
 
     except json.JSONDecodeError:
         return [{"title": "Parse error", "reason": "Could not parse AI response", "wiki": "", "lang": ""}]

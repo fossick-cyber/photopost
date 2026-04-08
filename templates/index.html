@@ -667,8 +667,8 @@ async function doSuggest(photoId) {
     if(!photoId) return;
     btn.disabled=true; btn.textContent='Asking AI...';
     box.innerHTML = `<div class="progress-banner" style="margin-top:8px">
-        <span class="spinner"></span> Generating 10 suggestions with AI...
-        <div class="muted" style="margin-top:4px;font-size:11px">Asking GPT for article ideas across multiple languages. This takes 5-15 seconds.</div>
+        <span class="spinner"></span> Generating suggestions with AI...
+        <div class="muted" style="margin-top:4px;font-size:11px">Asking GPT for article ideas across multiple languages, then verifying each exists on Wikipedia and resolving redirects. This takes 10-20 seconds.</div>
     </div>`;
     try {
         const d = await api('api/photos/'+photoId+'/suggestions/generate', {method:'POST'});
