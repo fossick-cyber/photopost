@@ -1,0 +1,3 @@
+httpx>=0.27
+flask>=3.0
+sqlalchemy>=2.0
