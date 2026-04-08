@@ -15,18 +15,15 @@ app = Flask(__name__)
 
 
 def _fix_thumb(url, filename):
-    """Fix thumb URLs where the appended filename isn't URL-encoded."""
+    """Fix thumb URLs to use underscores (Wikimedia standard for thumbnails)."""
     if not url:
         return url
-    from urllib.parse import quote
-    # Try both space and underscore versions of the filename
-    for fn in (filename, filename.replace("_", " "), filename.replace(" ", "_")):
+    # Wikimedia thumbnails always use underscores, not spaces or %20
+    fn_underscored = filename.replace(" ", "_")
+    for fn in (filename, filename.replace("_", " "), fn_underscored):
         suffix = "/300px-" + fn
         if url.endswith(suffix):
-            encoded_suffix = "/300px-" + quote(fn, safe="")
-            if suffix != encoded_suffix:
-                return url[:-len(suffix)] + encoded_suffix
-            return url
+            return url[:-len(suffix)] + "/300px-" + fn_underscored
     return url
 
 engine, Session = init_db()
