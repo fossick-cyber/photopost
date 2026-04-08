@@ -702,6 +702,12 @@ async function renderChecklists() {
             </div>
         `).join('')}
     `;
+
+    // Auto-detect running checks and resume progress polling
+    for (const c of clData) {
+        const s = await api('api/checklists/'+c.id+'/check-status');
+        if (s.running) watchCheck(c.id);
+    }
 }
 
 async function createChecklist() {
@@ -720,25 +726,52 @@ async function deleteChecklist(clId) {
     render();
 }
 
-async function startCheck(clId) {
-    await api('api/checklists/'+clId+'/check', {method:'POST'});
-    // Start progress polling
+async function startCheck(clId, skipPost) {
+    if (!skipPost) {
+        const r = await api('api/checklists/'+clId+'/check', {method:'POST'});
+        if (r.error) { /* already running is fine */ }
+    }
+    watchCheck(clId);
+}
+
+function watchCheck(clId) {
     if (pollTimers['cl'+clId]) clearInterval(pollTimers['cl'+clId]);
     pollTimers['cl'+clId] = setInterval(async () => {
         const s = await api('api/checklists/'+clId+'/check-status');
+        // Update any progress box on screen (list view or detail view)
         const box = $('cl-progress-'+clId) || $('cl-detail-progress');
         if (box) {
             if (s.running) {
+                const elapsed = s.checked > 0 ? (s.pct > 0 ? Math.round((100 - s.pct) / s.pct * s.checked * 0.3) : 0) : 0;
+                const eta = elapsed > 0 ? `~${elapsed}s remaining` : '';
                 box.innerHTML = `
-                    <div class="progress-bar-bg" style="margin-top:6px"><div class="progress-bar-fill" style="width:${s.pct}%"></div></div>
-                    <div style="font-size:11px;color:#58a6ff;margin-top:2px">
-                        Checking ${s.checked}/${s.total} — ${s.found} found, ${s.missing} missing — ${esc(trunc(s.current,40))} (${s.pct}%)
+                    <div class="progress-banner" style="margin-top:6px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                            <span class="spinner"></span>
+                            <strong>Checking articles...</strong>
+                            <span>${s.checked} / ${s.total}</span>
+                            <span style="margin-left:auto">${s.pct}%</span>
+                        </div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${s.pct}%"></div></div>
+                        <div style="display:flex;gap:12px;margin-top:6px;font-size:11px">
+                            <span style="color:#3fb950">Found: ${s.found}</span>
+                            <span style="color:#f85149">Missing: ${s.missing}</span>
+                            ${s.errors?`<span style="color:#d29922">Errors: ${s.errors}</span>`:''}
+                            <span style="flex:1"></span>
+                            <span class="muted">${eta}</span>
+                        </div>
+                        <div style="margin-top:4px;font-size:11px;color:#8b949e">
+                            Now checking: <span style="color:#c9d1d9">${esc(s.current)}</span>
+                        </div>
                     </div>`;
             } else {
-                box.innerHTML = `<div style="font-size:11px;color:#3fb950;margin-top:4px">Done: ${s.found} found, ${s.missing} missing</div>`;
+                box.innerHTML = `
+                    <div class="result-banner ok" style="margin-top:6px">
+                        Check complete: <strong>${s.found}</strong> found, <strong>${s.missing}</strong> missing${s.errors?`, <strong>${s.errors}</strong> errors`:''} (${s.total} articles)
+                    </div>`;
                 clearInterval(pollTimers['cl'+clId]);
                 delete pollTimers['cl'+clId];
-                setTimeout(render, 1500);
+                setTimeout(render, 2000);
             }
         }
     }, 1000);
@@ -800,8 +833,8 @@ async function renderChecklistView() {
         </table>
     `;
 
-    // If check is running, start progress polling
-    if (status.running) startCheck(clId);
+    // If check is running, resume progress polling (don't re-POST)
+    if (status.running) watchCheck(clId);
 }
 
 async function checkHistory(wiki, articleTitle, btn) {
