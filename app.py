@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 from flask import Flask, render_template, request, jsonify
 from sqlalchemy import func, case
 
-from models import init_db, TrackedUser, Photo, PhotoUsage, UsageEvent, Checklist, ChecklistItem
+from models import init_db, TrackedUser, Photo, PhotoUsage, UsageEvent, Checklist, ChecklistItem, AISuggestion
 from poller import poll_user, poll_progress
-from suggestions import suggest_articles_for_photo
+from suggestions import generate_suggestions
 
 app = Flask(__name__)
 
@@ -30,6 +30,9 @@ engine, Session = init_db()
 
 _active_polls = set()
 _polls_lock = threading.Lock()
+
+# These users cannot be deleted from the UI
+PROTECTED_USERS = {"diliff", "FossickUK", "FrogsLegs71", "Cyr Photos"}
 
 
 @app.route("/")
@@ -61,6 +64,7 @@ def list_users():
                 "photo_count": photo_count,
                 "active_usages": active_usages or 0,
                 "is_polling": u.username in _active_polls,
+                "protected": u.username in PROTECTED_USERS,
             })
         return jsonify(result)
     finally:
@@ -93,6 +97,8 @@ def delete_user(user_id):
         user = db.get(TrackedUser, user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
+        if user.username in PROTECTED_USERS:
+            return jsonify({"error": "This user is protected and cannot be deleted"}), 403
         db.delete(user)
         db.commit()
         return jsonify({"ok": True})
@@ -977,25 +983,133 @@ def user_stats(user_id):
 
 # --- Suggestions ---
 
-@app.route("/api/suggest", methods=["POST"])
-def suggest():
-    data = request.get_json()
-    categories = data.get("categories", [])
-    description = data.get("description", "")
-    current_articles = data.get("current_articles", [])
-    filename = data.get("filename", "")
-    current_usages = data.get("current_usages", [])
-    if not categories and not description:
-        return jsonify({"suggestions": []})
+@app.route("/api/photos/<int:photo_id>/suggestions", methods=["GET"])
+def get_suggestions(photo_id):
+    """Get all saved suggestions for a photo."""
+    db = Session()
     try:
-        results = suggest_articles_for_photo(
-            categories, description, current_articles,
-            filename=filename,
-            current_usages=current_usages,
+        suggestions = (
+            db.query(AISuggestion)
+            .filter_by(photo_id=photo_id)
+            .order_by(AISuggestion.created_at.desc())
+            .all()
         )
-    except Exception as e:
-        return jsonify({"error": f"Suggestion failed: {e}"}), 502
-    return jsonify({"suggestions": results})
+        return jsonify([{
+            "id": s.id,
+            "title": s.article_title,
+            "wiki": s.wiki,
+            "lang": s.lang,
+            "reason": s.reason,
+            "description": s.description,
+            "wikicode": s.wikicode,
+            "status": s.status,
+            "created_at": s.created_at.isoformat(),
+        } for s in suggestions])
+    finally:
+        db.close()
+
+
+@app.route("/api/photos/<int:photo_id>/suggestions/generate", methods=["POST"])
+def generate_photo_suggestions(photo_id):
+    """Generate new AI suggestions for a photo and save to DB."""
+    db = Session()
+    try:
+        photo = db.get(Photo, photo_id)
+        if not photo:
+            return jsonify({"error": "Photo not found"}), 404
+
+        # Get current usages from DB
+        usages = (
+            db.query(PhotoUsage)
+            .filter_by(photo_id=photo_id, is_active=True)
+            .all()
+        )
+        current_usages = [{"article_title": u.article_title, "wiki": u.wiki} for u in usages]
+
+        # Get already-suggested titles to avoid repeats
+        existing = db.query(AISuggestion).filter_by(photo_id=photo_id).all()
+        existing_titles = [f"{s.wiki}:{s.article_title}" for s in existing]
+
+        categories = json.loads(photo.categories) if photo.categories else []
+
+        results = generate_suggestions(
+            categories=categories,
+            description=photo.description or "",
+            filename=photo.filename,
+            current_usages=current_usages,
+            existing_suggestions=existing_titles,
+            count=10,
+        )
+
+        # Save to DB
+        saved = []
+        for s in results:
+            if s.get("title") in ("Error", "Parse error"):
+                saved.append(s)
+                continue
+
+            # Check if already exists
+            exists = db.query(AISuggestion).filter_by(
+                photo_id=photo_id,
+                wiki=s.get("wiki", "en.wikipedia.org"),
+                article_title=s.get("title", ""),
+            ).first()
+            if exists:
+                continue
+
+            suggestion = AISuggestion(
+                photo_id=photo_id,
+                article_title=s.get("title", ""),
+                wiki=s.get("wiki", "en.wikipedia.org"),
+                lang=s.get("lang", "en"),
+                reason=s.get("reason", ""),
+                description=s.get("description", ""),
+                wikicode=s.get("wikicode", ""),
+            )
+            db.add(suggestion)
+            saved.append(s)
+
+        db.commit()
+
+        # Return all suggestions for this photo
+        all_suggestions = (
+            db.query(AISuggestion)
+            .filter_by(photo_id=photo_id)
+            .order_by(AISuggestion.created_at)
+            .all()
+        )
+        return jsonify({
+            "new_count": len(saved),
+            "suggestions": [{
+                "id": s.id,
+                "title": s.article_title,
+                "wiki": s.wiki,
+                "lang": s.lang,
+                "reason": s.reason,
+                "description": s.description,
+                "wikicode": s.wikicode,
+                "status": s.status,
+                "created_at": s.created_at.isoformat(),
+            } for s in all_suggestions],
+        })
+    finally:
+        db.close()
+
+
+@app.route("/api/suggestions/<int:suggestion_id>/status", methods=["POST"])
+def update_suggestion_status(suggestion_id):
+    """Mark a suggestion as 'added' or 'dismissed'."""
+    db = Session()
+    try:
+        s = db.get(AISuggestion, suggestion_id)
+        if not s:
+            return jsonify({"error": "Not found"}), 404
+        data = request.get_json()
+        s.status = data.get("status", s.status)
+        db.commit()
+        return jsonify({"ok": True, "status": s.status})
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

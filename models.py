@@ -95,6 +95,28 @@ class UsageEvent(Base):
     )
 
 
+class AISuggestion(Base):
+    __tablename__ = "ai_suggestions"
+
+    id = Column(Integer, primary_key=True)
+    photo_id = Column(Integer, ForeignKey("photos.id"), nullable=False)
+    article_title = Column(String(500), nullable=False)
+    wiki = Column(String(255), nullable=False, default="en.wikipedia.org")
+    lang = Column(String(10), nullable=False, default="en")
+    reason = Column(Text, default="")
+    description = Column(Text, default="")  # caption in target language
+    wikicode = Column(Text, default="")
+    status = Column(String(20), default="pending")  # pending, added, dismissed
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    photo = relationship("Photo")
+
+    __table_args__ = (
+        Index("ix_ai_suggestions_photo", "photo_id"),
+        Index("ix_ai_suggestions_photo_wiki_title", "photo_id", "wiki", "article_title", unique=True),
+    )
+
+
 class Checklist(Base):
     __tablename__ = "checklists"
 

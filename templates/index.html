@@ -368,7 +368,7 @@ async function renderUsers() {
                         <button class="btn btn-primary" onclick="event.stopPropagation();pollAndTrack(${u.id},'${esc(u.username)}')" ${u.is_polling?'disabled':''}>
                             ${u.is_polling?'<span class="spinner"></span> Polling':'Poll Now'}
                         </button>
-                        <button class="btn btn-danger" onclick="event.stopPropagation();delUser(${u.id},'${esc(u.username)}')">Delete</button>
+                        ${u.protected ? '' : `<button class="btn btn-danger" onclick="event.stopPropagation();delUser(${u.id},'${esc(u.username)}')">Delete</button>`}
                     </td>
                 </tr>
                 ${u.is_polling ? `<tr><td colspan="5" style="padding:4px 10px">
@@ -589,7 +589,7 @@ async function renderPhotoDetail() {
                 </div>
                 <div style="margin-top:8px">
                     <a href="https://commons.wikimedia.org/wiki/File:${encodeURIComponent(photo.filename)}" target="_blank" class="btn">View on Commons</a>
-                    <button class="btn btn-primary" id="suggest-btn" onclick="doSuggest()">AI Suggest</button>
+                    <button class="btn btn-primary" id="suggest-btn" onclick="doSuggest(${pid})">AI Suggest (10)</button>
                     <button class="btn" id="missing-btn" onclick="doMissingLangs()">Find Missing Languages</button>
                 </div>
                 <div id="suggestions"></div>
@@ -654,55 +654,88 @@ async function renderPhotoDetail() {
     `;
 
     window._photo = photo;
+
+    // Load saved suggestions
+    const savedSuggestions = await api('api/photos/'+pid+'/suggestions');
+    if (savedSuggestions.length > 0) {
+        renderSuggestions(savedSuggestions, pid);
+    }
 }
 
-async function doSuggest() {
-    const btn=$('suggest-btn'), box=$('suggestions'), p=window._photo;
-    if(!p) return;
+async function doSuggest(photoId) {
+    const btn=$('suggest-btn'), box=$('suggestions');
+    if(!photoId) return;
     btn.disabled=true; btn.textContent='Asking AI...';
     box.innerHTML = `<div class="progress-banner" style="margin-top:8px">
-        <span class="spinner"></span> Generating suggestions with AI...
-        <div class="muted" style="margin-top:4px;font-size:11px">Asking GPT for article ideas across multiple languages, then verifying each exists on Wikipedia. This takes 10-20 seconds.</div>
+        <span class="spinner"></span> Generating 10 suggestions with AI...
+        <div class="muted" style="margin-top:4px;font-size:11px">Asking GPT for article ideas across multiple languages. This takes 5-15 seconds.</div>
     </div>`;
     try {
-        const d = await api('api/suggest',{method:'POST',body:{
-            categories: p.categories||[],
-            description: p.description||'',
-            filename: p.filename||'',
-            current_articles: p.active_usages.map(u=>u.article_title),
-            current_usages: p.active_usages.map(u=>({article_title:u.article_title, wiki:u.wiki})),
-        }});
-        if(d.suggestions?.length) {
-            box.innerHTML = `<div style="margin-top:12px">
-                <div style="font-size:11px;color:#8b949e;margin-bottom:6px">${d.suggestions.length} verified suggestions across ${[...new Set(d.suggestions.map(s=>s.lang))].length} languages</div>
-                <table class="data-table">
-                    <thead><tr>
-                        <th style="width:40px">Lang</th>
-                        <th>Article</th>
-                        <th>Reason</th>
-                        <th>Wikicode (click to copy)</th>
-                        <th style="width:60px">Edit</th>
-                    </tr></thead>
-                    <tbody>
-                        ${d.suggestions.map(s => {
-                            const wiki = s.wiki || 'en.wikipedia.org';
-                            const editUrl = 'https://'+wiki+'/wiki/'+encodeURIComponent((s.title||'').replace(/ /g,'_'))+'?action=edit';
-                            const articleUrl = 'https://'+wiki+'/wiki/'+encodeURIComponent((s.title||'').replace(/ /g,'_'));
-                            const wikicode = s.wikicode || '';
-                            return `<tr>
-                                <td><span class="badge badge-blue">${esc(s.lang||'en')}</span></td>
-                                <td><a href="${esc(articleUrl)}" target="_blank" style="color:#58a6ff;text-decoration:none">${esc((s.title||'').replace(/_/g,' '))}</a></td>
-                                <td class="muted" style="font-size:11px">${esc(s.reason||'')}</td>
-                                <td><code style="cursor:pointer;background:#161b22;padding:2px 6px;border-radius:3px;font-size:10px;word-break:break-all;display:block;max-width:300px" onclick="navigator.clipboard.writeText(this.textContent);this.style.background='#0f5323';setTimeout(()=>this.style.background='#161b22',1000)" title="Click to copy">${esc(wikicode)}</code></td>
-                                <td><a href="${esc(editUrl)}" target="_blank" class="btn btn-primary" style="font-size:10px;padding:2px 6px">Edit</a></td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>`;
-        } else box.innerHTML='<div style="color:#8b949e;margin-top:4px">No suggestions found</div>';
-    } catch(e) { box.innerHTML='<div style="color:#f85149;margin-top:4px">Error: '+esc(e.message)+'</div>'; }
-    finally { btn.style.display='none'; }
+        const d = await api('api/photos/'+photoId+'/suggestions/generate', {method:'POST'});
+        if (d.suggestions?.length) {
+            renderSuggestions(d.suggestions, photoId);
+        } else {
+            box.innerHTML='<div style="color:#8b949e;margin-top:4px">No new suggestions found</div>';
+        }
+    } catch(e) {
+        box.innerHTML='<div style="color:#f85149;margin-top:4px">Error: '+esc(e.message)+'</div>';
+    }
+    btn.disabled=false;
+    btn.textContent='Generate 10 More';
+    btn.style.display='';
+}
+
+function renderSuggestions(suggestions, photoId) {
+    const box = $('suggestions');
+    const btn = $('suggest-btn');
+    if (btn) { btn.textContent = 'Generate 10 More'; btn.disabled = false; btn.style.display = ''; }
+
+    const pending = suggestions.filter(s => s.status === 'pending');
+    const added = suggestions.filter(s => s.status === 'added');
+    const dismissed = suggestions.filter(s => s.status === 'dismissed');
+
+    box.innerHTML = `<div style="margin-top:12px">
+        <div style="font-size:11px;color:#8b949e;margin-bottom:6px">
+            ${suggestions.length} suggestions (${pending.length} pending, ${added.length} added, ${dismissed.length} dismissed)
+            across ${[...new Set(suggestions.map(s=>s.lang))].length} languages
+        </div>
+        <table class="data-table">
+            <thead><tr>
+                <th style="width:40px">Lang</th>
+                <th>Article</th>
+                <th>Reason</th>
+                <th>Wikicode (click to copy)</th>
+                <th style="width:60px">Edit</th>
+                <th style="width:110px">Status</th>
+            </tr></thead>
+            <tbody>
+                ${suggestions.map(s => {
+                    const wiki = s.wiki || 'en.wikipedia.org';
+                    const editUrl = 'https://'+wiki+'/wiki/'+encodeURIComponent((s.title||'').replace(/ /g,'_'))+'?action=edit';
+                    const articleUrl = 'https://'+wiki+'/wiki/'+encodeURIComponent((s.title||'').replace(/ /g,'_'));
+                    const wikicode = s.wikicode || '';
+                    const dimmed = s.status === 'dismissed' ? 'opacity:0.4' : s.status === 'added' ? 'opacity:0.7' : '';
+                    return `<tr style="${dimmed}">
+                        <td><span class="badge badge-blue">${esc(s.lang||'en')}</span></td>
+                        <td><a href="${esc(articleUrl)}" target="_blank" style="color:#58a6ff;text-decoration:none">${esc((s.title||'').replace(/_/g,' '))}</a></td>
+                        <td class="muted" style="font-size:11px">${esc(s.reason||'')}</td>
+                        <td><code style="cursor:pointer;background:#161b22;padding:2px 6px;border-radius:3px;font-size:10px;word-break:break-all;display:block;max-width:280px" onclick="navigator.clipboard.writeText(this.textContent);this.style.background='#0f5323';setTimeout(()=>this.style.background='#161b22',1000)" title="Click to copy">${esc(wikicode)}</code></td>
+                        <td><a href="${esc(editUrl)}" target="_blank" class="btn btn-primary" style="font-size:10px;padding:2px 6px">Edit</a></td>
+                        <td>${s.status==='pending' ? `
+                            <button class="btn" style="font-size:10px;padding:1px 5px;color:#3fb950;border-color:#3fb950" onclick="setSuggestionStatus(${s.id},'added',${photoId})">Done</button>
+                            <button class="btn" style="font-size:10px;padding:1px 5px" onclick="setSuggestionStatus(${s.id},'dismissed',${photoId})">Skip</button>
+                        ` : `<span class="badge ${s.status==='added'?'badge-green':'badge-yellow'}">${s.status}</span>`}</td>
+                    </tr>`;
+                }).join('')}
+            </tbody>
+        </table>
+    </div>`;
+}
+
+async function setSuggestionStatus(id, status, photoId) {
+    await api('api/suggestions/'+id+'/status', {method:'POST', body:{status}});
+    const all = await api('api/photos/'+photoId+'/suggestions');
+    renderSuggestions(all, photoId);
 }
 
 // ─── Checklists (top-level) ───
