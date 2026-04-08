@@ -586,9 +586,11 @@ async function renderPhotoDetail() {
                 </div>
                 <div style="margin-top:8px">
                     <a href="https://commons.wikimedia.org/wiki/File:${encodeURIComponent(photo.filename)}" target="_blank" class="btn">View on Commons</a>
-                    <button class="btn btn-primary" id="suggest-btn" onclick="doSuggest()">Suggest Articles</button>
+                    <button class="btn btn-primary" id="suggest-btn" onclick="doSuggest()">AI Suggest</button>
+                    <button class="btn" id="missing-btn" onclick="doMissingLangs()">Find Missing Languages</button>
                 </div>
                 <div id="suggestions"></div>
+                <div id="missing-langs"></div>
             </div>
         </div>
 
@@ -664,7 +666,82 @@ async function doSuggest() {
     finally { btn.style.display='none'; }
 }
 
+async function doMissingLangs() {
+    const btn=$('missing-btn'), box=$('missing-langs'), p=window._photo;
+    if(!p) return;
+    btn.disabled=true; btn.textContent='Searching...';
+    try {
+        const d = await api(`api/photos/${p.id}/missing-languages`);
+        if(d.missing?.length) {
+            box.innerHTML = `
+                <div style="margin-top:12px">
+                    <div style="font-size:11px;color:#8b949e;margin-bottom:4px">${d.total_missing} language versions missing this photo (checked: ${d.checked_articles.join(', ')})</div>
+                    <table class="data-table">
+                        <thead><tr>
+                            <th style="width:60px">Lang</th>
+                            <th>Article</th>
+                            <th style="width:120px">Source</th>
+                            <th style="width:80px">Action</th>
+                        </tr></thead>
+                        <tbody>
+                            ${d.missing.map(m=>`
+                                <tr>
+                                    <td><span class="badge badge-blue">${esc(m.lang)}</span></td>
+                                    <td><a href="${esc(m.edit_url)}" target="_blank" style="color:#58a6ff;text-decoration:none">${esc(m.article_title)}</a></td>
+                                    <td class="muted">${esc(m.source_article)}</td>
+                                    <td><a href="${esc(m.edit_url)}?action=edit" target="_blank" class="btn btn-primary" style="font-size:11px;padding:2px 6px">Edit</a></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
+        } else box.innerHTML='<div style="color:#8b949e;margin-top:8px">No missing language articles found</div>';
+    } catch(e) { box.innerHTML='<div style="color:#f85149;margin-top:8px">Error: '+esc(e.message)+'</div>'; }
+    finally { btn.style.display='none'; }
+}
+
+// ─── Browser back/forward ───
+function pushState() {
+    const state = {view, userId, photoId};
+    const url = view === 'users' ? './' :
+                view === 'user-detail' ? `?user=${userId}` :
+                `?user=${userId}&photo=${photoId}`;
+    history.pushState(state, '', url);
+}
+
+window.addEventListener('popstate', (e) => {
+    if (e.state) {
+        view = e.state.view || 'users';
+        userId = e.state.userId || null;
+        photoId = e.state.photoId || null;
+    } else {
+        view = 'users'; userId = null; photoId = null;
+    }
+    render();
+});
+
+// Override go() to push state
+const _origGo = go;
+go = function(v, uid, pid) {
+    _origGo(v, uid, pid);
+    pushState();
+};
+
+// Handle initial URL params
+(function initFromUrl() {
+    const params = new URLSearchParams(location.search);
+    if (params.get('photo') && params.get('user')) {
+        view = 'photo-detail';
+        userId = parseInt(params.get('user'));
+        photoId = parseInt(params.get('photo'));
+    } else if (params.get('user')) {
+        view = 'user-detail';
+        userId = parseInt(params.get('user'));
+    }
+})();
+
 render();
+pushState();
 </script>
 </body>
 </html>

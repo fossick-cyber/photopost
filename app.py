@@ -294,6 +294,116 @@ def photo_detail(photo_id):
         db.close()
 
 
+# --- Missing language articles ---
+
+@app.route("/api/photos/<int:photo_id>/missing-languages", methods=["GET"])
+def missing_languages(photo_id):
+    """Find articles in other languages that could use this photo.
+
+    For each article that uses this photo, finds interlanguage links
+    and checks which language versions DON'T use the photo.
+    """
+    import httpx
+
+    db = Session()
+    try:
+        photo = db.get(Photo, photo_id)
+        if not photo:
+            return jsonify({"error": "Photo not found"}), 404
+
+        # Get all wikis currently using this photo
+        usages = (
+            db.query(PhotoUsage)
+            .filter_by(photo_id=photo_id, is_active=True)
+            .all()
+        )
+
+        # Build set of (wiki, title) pairs that already have this photo
+        has_photo = set()
+        for u in usages:
+            has_photo.add((u.wiki, u.article_title))
+
+        # Group usages by wiki — find the "main" articles (en.wikipedia preferred)
+        wiki_articles = {}
+        for u in usages:
+            wiki = u.wiki
+            if wiki.endswith('.wikipedia.org'):
+                wiki_articles.setdefault(wiki, []).append(u.article_title)
+
+        # For up to 5 articles, get their interlanguage links
+        client = httpx.Client(
+            headers={"User-Agent": "PhotoPost/1.0"},
+            timeout=15.0,
+        )
+
+        missing = []
+        checked_articles = []
+
+        # Prefer en.wikipedia articles
+        source_articles = wiki_articles.get('en.wikipedia.org', [])[:5]
+        if not source_articles:
+            # Fall back to any wikipedia
+            for wiki, articles in wiki_articles.items():
+                source_articles.extend(articles[:3])
+                if len(source_articles) >= 5:
+                    break
+
+        for article_title in source_articles[:5]:
+            try:
+                resp = client.get('https://en.wikipedia.org/w/api.php', params={
+                    'action': 'query',
+                    'titles': article_title,
+                    'prop': 'langlinks',
+                    'lllimit': '500',
+                    'format': 'json',
+                    'formatversion': '2',
+                })
+                data = resp.json()
+                pages = data.get('query', {}).get('pages', [])
+                if not pages:
+                    continue
+
+                langlinks = pages[0].get('langlinks', [])
+                for ll in langlinks:
+                    lang = ll.get('lang', '')
+                    foreign_title = ll.get('title', '')
+                    foreign_wiki = f"{lang}.wikipedia.org"
+
+                    if (foreign_wiki, foreign_title) not in has_photo:
+                        edit_url = f"https://{foreign_wiki}/wiki/{foreign_title.replace(' ', '_')}"
+                        missing.append({
+                            'lang': lang,
+                            'wiki': foreign_wiki,
+                            'article_title': foreign_title,
+                            'source_article': article_title,
+                            'edit_url': edit_url,
+                        })
+
+                checked_articles.append(article_title)
+            except Exception:
+                continue
+
+        # Deduplicate by (wiki, article_title)
+        seen = set()
+        deduped = []
+        for m in missing:
+            key = (m['wiki'], m['article_title'])
+            if key not in seen:
+                seen.add(key)
+                deduped.append(m)
+
+        # Sort by language code
+        deduped.sort(key=lambda x: x['lang'])
+
+        return jsonify({
+            'missing': deduped,
+            'checked_articles': checked_articles,
+            'total_missing': len(deduped),
+        })
+    finally:
+        db.close()
+
+
 # --- Events feed ---
 
 @app.route("/api/users/<int:user_id>/events", methods=["GET"])
