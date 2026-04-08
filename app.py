@@ -13,6 +13,19 @@ from suggestions import suggest_articles_for_photo
 
 app = Flask(__name__)
 
+
+def _fix_thumb(url, filename):
+    """Fix thumb URLs where the appended filename isn't URL-encoded."""
+    if not url:
+        return url
+    from urllib.parse import quote
+    # If the URL ends with an unencoded filename, fix it
+    suffix = "/300px-" + filename
+    encoded_suffix = "/300px-" + quote(filename, safe="")
+    if url.endswith(suffix) and suffix != encoded_suffix:
+        return url[:-len(suffix)] + encoded_suffix
+    return url
+
 engine, Session = init_db()
 
 _active_polls = set()
@@ -198,7 +211,7 @@ def user_photos(user_id):
                 "id": p.id,
                 "filename": p.filename,
                 "description": p.description or "",
-                "thumb_url": p.thumb_url,
+                "thumb_url": _fix_thumb(p.thumb_url, p.filename),
                 "upload_date": p.upload_date.isoformat() if p.upload_date else None,
                 "usage_count": ucount,
             })
@@ -263,7 +276,7 @@ def photo_detail(photo_id):
             "username": user.username if user else "",
             "filename": photo.filename,
             "description": photo.description,
-            "thumb_url": photo.thumb_url,
+            "thumb_url": _fix_thumb(photo.thumb_url, photo.filename),
             "full_url": photo.full_url,
             "upload_date": photo.upload_date.isoformat() if photo.upload_date else None,
             "categories": json.loads(photo.categories) if photo.categories else [],

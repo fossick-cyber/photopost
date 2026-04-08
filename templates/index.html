@@ -660,6 +660,10 @@ async function doSuggest() {
     const btn=$('suggest-btn'), box=$('suggestions'), p=window._photo;
     if(!p) return;
     btn.disabled=true; btn.textContent='Asking AI...';
+    box.innerHTML = `<div class="progress-banner" style="margin-top:8px">
+        <span class="spinner"></span> Generating suggestions with AI...
+        <div class="muted" style="margin-top:4px;font-size:11px">Asking GPT for article ideas across multiple languages, then verifying each exists on Wikipedia. This takes 10-20 seconds.</div>
+    </div>`;
     try {
         const d = await api('api/suggest',{method:'POST',body:{
             categories: p.categories||[],
