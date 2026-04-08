@@ -419,13 +419,13 @@ def missing_languages(photo_id):
         db.close()
 
 
-# --- Checklists ---
+# --- Checklists (global — checks all tracked users' photos) ---
 
-@app.route("/api/users/<int:user_id>/checklists", methods=["GET"])
-def list_checklists(user_id):
+@app.route("/api/checklists", methods=["GET"])
+def list_checklists():
     db = Session()
     try:
-        checklists = db.query(Checklist).filter_by(user_id=user_id).order_by(Checklist.created_at.desc()).all()
+        checklists = db.query(Checklist).order_by(Checklist.created_at.desc()).all()
         return jsonify([{
             "id": c.id,
             "name": c.name,
@@ -439,19 +439,14 @@ def list_checklists(user_id):
         db.close()
 
 
-@app.route("/api/users/<int:user_id>/checklists", methods=["POST"])
-def create_checklist(user_id):
+@app.route("/api/checklists", methods=["POST"])
+def create_checklist():
     """Create a checklist from uploaded article list.
 
-    Accepts JSON: { name, articles: [{title, wiki?}] }
-    Or a plain text list (one article per line, optional wiki prefix like "fr.wikipedia.org:Article Title")
+    Accepts JSON: { name, articles: ["title", "wiki:title", ...] }
     """
     db = Session()
     try:
-        user = db.get(TrackedUser, user_id)
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-
         data = request.get_json()
         name = data.get("name", "Checklist").strip()
         raw_articles = data.get("articles", [])
@@ -459,13 +454,12 @@ def create_checklist(user_id):
         if not raw_articles:
             return jsonify({"error": "No articles provided"}), 400
 
-        checklist = Checklist(user_id=user_id, name=name)
+        checklist = Checklist(name=name)
         db.add(checklist)
         db.flush()
 
         for entry in raw_articles:
             if isinstance(entry, str):
-                # Parse "wiki:title" or just "title"
                 if ":" in entry and ".wikipedia.org" in entry.split(":")[0]:
                     wiki, title = entry.split(":", 1)
                     wiki = wiki.strip()
@@ -479,6 +473,8 @@ def create_checklist(user_id):
 
             if not title:
                 continue
+
+            title = title.replace("_", " ")
 
             item = ChecklistItem(
                 checklist_id=checklist.id,
@@ -534,82 +530,125 @@ def delete_checklist(checklist_id):
         db.close()
 
 
+_checklist_progress = {}  # { checklist_id: { checked, total, found, missing, current, done } }
+
 @app.route("/api/checklists/<int:checklist_id>/check", methods=["POST"])
 def run_checklist(checklist_id):
-    """Live-check each article on the checklist against Wikipedia API.
-
-    For each article, fetches its images and checks if any of the tracked
-    user's photos appear.
-    """
-    import httpx
-
+    """Start a background check of all articles in the checklist."""
     db = Session()
     try:
         cl = db.get(Checklist, checklist_id)
         if not cl:
             return jsonify({"error": "Not found"}), 404
 
-        user = db.get(TrackedUser, cl.user_id)
-        # Get all filenames for this user
-        user_files = set()
-        for p in db.query(Photo).filter_by(user_id=cl.user_id).all():
-            user_files.add(p.filename.replace("_", " "))
-            user_files.add(p.filename)
+        if checklist_id in _checklist_progress and not _checklist_progress[checklist_id].get("done"):
+            return jsonify({"error": "Check already running"}), 409
 
-        client = httpx.Client(
-            headers={"User-Agent": "PhotoPost/1.0"},
-            timeout=15.0,
-        )
-
-        now = datetime.now(timezone.utc)
-        results = []
-
-        for item in cl.items:
-            wiki = item.wiki
-            lang = wiki.replace(".wikipedia.org", "")
-            api_url = f"https://{wiki}/w/api.php"
-
-            try:
-                resp = client.get(api_url, params={
-                    "action": "query",
-                    "titles": item.article_title,
-                    "prop": "images",
-                    "imlimit": "500",
-                    "format": "json",
-                    "formatversion": "2",
-                })
-                data = resp.json()
-                pages = data.get("query", {}).get("pages", [])
-
-                article_images = set()
-                if pages and not pages[0].get("missing"):
-                    for img in pages[0].get("images", []):
-                        name = img.get("title", "").removeprefix("File:")
-                        article_images.add(name)
-                        article_images.add(name.replace(" ", "_"))
-
-                # Find which of the user's photos are on this article
-                matched = user_files & article_images
-                matched_list = sorted(set(f.replace(" ", "_") for f in matched))
-
-                item.status = "found" if matched_list else "missing"
-                item.found_files = json.dumps(matched_list)
-                item.last_checked = now
-
-            except Exception:
-                item.status = "error"
-                item.last_checked = now
-
-        cl.last_checked = now
-        db.commit()
-
-        return jsonify({
-            "checked": len(cl.items),
-            "found": sum(1 for i in cl.items if i.status == "found"),
-            "missing": sum(1 for i in cl.items if i.status == "missing"),
-        })
+        _checklist_progress[checklist_id] = {
+            "checked": 0, "total": len(cl.items),
+            "found": 0, "missing": 0, "errors": 0,
+            "current": "", "done": False,
+        }
     finally:
         db.close()
+
+    def do_check():
+        import httpx
+        check_db = Session()
+        try:
+            cl = check_db.get(Checklist, checklist_id)
+            # Load ALL tracked users' photos
+            user_files = {}  # normalized_name -> (filename, username)
+            for p in check_db.query(Photo).join(TrackedUser).all():
+                user_files[p.filename] = (p.filename, p.user.username)
+                user_files[p.filename.replace("_", " ")] = (p.filename, p.user.username)
+
+            client = httpx.Client(headers={"User-Agent": "PhotoPost/1.0"}, timeout=15.0)
+            now = datetime.now(timezone.utc)
+            prog = _checklist_progress[checklist_id]
+
+            for item in cl.items:
+                prog["current"] = item.article_title
+                api_url = f"https://{item.wiki}/w/api.php"
+
+                try:
+                    resp = client.get(api_url, params={
+                        "action": "query",
+                        "titles": item.article_title,
+                        "prop": "images",
+                        "imlimit": "500",
+                        "format": "json",
+                        "formatversion": "2",
+                    })
+                    data = resp.json()
+                    pages = data.get("query", {}).get("pages", [])
+
+                    article_images = set()
+                    if pages and not pages[0].get("missing"):
+                        for img in pages[0].get("images", []):
+                            name = img.get("title", "").removeprefix("File:")
+                            article_images.add(name)
+                            article_images.add(name.replace(" ", "_"))
+
+                    # Find which tracked photos are on this article
+                    matched = []
+                    seen = set()
+                    for img_name in article_images:
+                        if img_name in user_files and img_name not in seen:
+                            fname, uname = user_files[img_name]
+                            matched.append({"file": fname, "user": uname})
+                            seen.add(img_name)
+                            seen.add(img_name.replace(" ", "_"))
+                            seen.add(img_name.replace("_", " "))
+
+                    item.status = "found" if matched else "missing"
+                    item.found_files = json.dumps(matched)
+                    item.last_checked = now
+
+                    if matched:
+                        prog["found"] += 1
+                    else:
+                        prog["missing"] += 1
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    item.status = "error"
+                    item.last_checked = now
+                    prog["errors"] += 1
+
+                prog["checked"] += 1
+                # Commit each item so frontend sees live results
+                check_db.commit()
+
+            cl.last_checked = now
+            check_db.commit()
+            prog["done"] = True
+            prog["current"] = ""
+        except Exception as e:
+            _checklist_progress[checklist_id]["done"] = True
+            _checklist_progress[checklist_id]["error"] = str(e)
+        finally:
+            check_db.close()
+
+    threading.Thread(target=do_check, daemon=True).start()
+    return jsonify({"status": "started", "total": _checklist_progress[checklist_id]["total"]})
+
+
+@app.route("/api/checklists/<int:checklist_id>/check-status", methods=["GET"])
+def checklist_check_status(checklist_id):
+    prog = _checklist_progress.get(checklist_id)
+    if not prog:
+        return jsonify({"running": False})
+    return jsonify({
+        "running": not prog["done"],
+        "checked": prog["checked"],
+        "total": prog["total"],
+        "found": prog["found"],
+        "missing": prog["missing"],
+        "errors": prog.get("errors", 0),
+        "current": prog.get("current", ""),
+        "pct": int(prog["checked"] / max(prog["total"], 1) * 100),
+    })
 
 
 # --- Events feed ---

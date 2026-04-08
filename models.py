@@ -99,7 +99,7 @@ class Checklist(Base):
     __tablename__ = "checklists"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("tracked_users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("tracked_users.id"), nullable=True)  # nullable = global
     name = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_checked = Column(DateTime, nullable=True)

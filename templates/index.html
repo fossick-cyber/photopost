@@ -291,9 +291,10 @@
 </head>
 <body>
 <header>
-    <h1>Photo<span>Post</span></h1>
+    <h1 style="cursor:pointer" onclick="go('users')">Photo<span>Post</span></h1>
     <div id="breadcrumb" class="breadcrumb"></div>
     <div class="spacer"></div>
+    <button class="btn" onclick="go('checklists')" style="font-size:12px">Checklists</button>
 </header>
 
 <main id="app"></main>
@@ -335,6 +336,8 @@ async function render() {
     if (view === 'users') await renderUsers();
     else if (view === 'user-detail') await renderUserDetail();
     else if (view === 'photo-detail') await renderPhotoDetail();
+    else if (view === 'checklists') await renderChecklists();
+    else if (view === 'checklist-detail') await renderChecklistView();
 }
 
 // ─── Users ───
@@ -489,34 +492,6 @@ async function renderUserDetail() {
                     `).join('')}
                 </tbody>
             </table>`;
-    } else if (detailTab === 'checklist-detail') {
-        tabContent = await renderChecklistDetail(id);
-    } else if (detailTab === 'checklists') {
-        const clData = await api('api/users/'+id+'/checklists');
-        tabContent = `
-            <div class="toolbar">
-                <textarea id="cl-articles" placeholder="Paste article list (one per line)&#10;Optional wiki prefix: fr.wikipedia.org:Titre de l'article" style="width:100%;height:100px;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;border-radius:4px;padding:8px;font-family:inherit;font-size:12px;resize:vertical"></textarea>
-            </div>
-            <div class="toolbar">
-                <input type="text" id="cl-name" placeholder="Checklist name..." style="width:200px" value="Checklist ${new Date().toLocaleDateString()}">
-                <button class="btn btn-primary" onclick="createChecklist(${id})">Create Checklist</button>
-            </div>
-            ${clData.length===0?'<div class="empty">No checklists yet. Paste a list of articles above.</div>':''}
-            ${clData.map(c => `
-                <div style="background:#161b22;border:1px solid #30363d;border-radius:6px;padding:10px 14px;margin-bottom:8px">
-                    <div style="display:flex;align-items:center;gap:8px">
-                        <span style="font-weight:600;cursor:pointer;color:#58a6ff" onclick="viewChecklist(${id},${c.id})">${esc(c.name)}</span>
-                        <span class="badge badge-blue">${c.item_count} articles</span>
-                        ${c.last_checked ? `<span class="badge badge-green">${c.found} found</span><span class="badge badge-red">${c.missing} missing</span>` : '<span class="badge badge-yellow">unchecked</span>'}
-                        <div style="flex:1"></div>
-                        <button class="btn btn-primary" onclick="runChecklist(${c.id})" style="font-size:11px">Check Now</button>
-                        <button class="btn" onclick="viewChecklist(${id},${c.id})" style="font-size:11px">View</button>
-                        <button class="btn btn-danger" onclick="deleteChecklist(${c.id})" style="font-size:11px">Delete</button>
-                    </div>
-                    ${c.last_checked ? '<div style="font-size:11px;color:#8b949e;margin-top:4px">Last checked: '+relTime(c.last_checked)+'</div>' : ''}
-                </div>
-            `).join('')}
-        `;
     }
 
     app.innerHTML = `
@@ -544,7 +519,6 @@ async function renderUserDetail() {
         <div class="tabs">
             <button class="tab ${detailTab==='photos'?'active':''}" onclick="detailTab='photos';render()">Photos</button>
             <button class="tab ${detailTab==='events'?'active':''}" onclick="detailTab='events';render()">Events</button>
-            <button class="tab ${detailTab==='checklists'||detailTab==='checklist-detail'?'active':''}" onclick="detailTab='checklists';render()">Checklists</button>
         </div>
         ${tabContent}
     `;
@@ -695,23 +669,48 @@ async function doSuggest() {
     finally { btn.style.display='none'; }
 }
 
-// ─── Checklists ───
+// ─── Checklists (top-level) ───
 let checklistViewId = null;
 
-async function createChecklist(uid) {
+async function renderChecklists() {
+    bc.innerHTML = 'Checklists';
+    const clData = await api('api/checklists');
+
+    app.innerHTML = `
+        <div class="toolbar">
+            <textarea id="cl-articles" placeholder="Paste article list (one per line)&#10;Optional wiki prefix: fr.wikipedia.org:Titre de l'article" style="width:100%;height:100px;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;border-radius:4px;padding:8px;font-family:inherit;font-size:12px;resize:vertical"></textarea>
+        </div>
+        <div class="toolbar">
+            <input type="text" id="cl-name" placeholder="Checklist name..." style="width:200px" value="Checklist ${new Date().toLocaleDateString()}">
+            <button class="btn btn-primary" onclick="createChecklist()">Create Checklist</button>
+            <span class="muted" style="font-size:11px">Checks all tracked users' photos against each article</span>
+        </div>
+        ${clData.length===0?'<div class="empty">No checklists yet. Paste a list of articles above.</div>':''}
+        ${clData.map(c => `
+            <div style="background:#161b22;border:1px solid #30363d;border-radius:6px;padding:10px 14px;margin-bottom:8px">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="font-weight:600;cursor:pointer;color:#58a6ff" onclick="go('checklist-detail',${c.id})">${esc(c.name)}</span>
+                    <span class="badge badge-blue">${c.item_count} articles</span>
+                    ${c.last_checked ? `<span class="badge badge-green">${c.found} found</span><span class="badge badge-red">${c.missing} missing</span>` : '<span class="badge badge-yellow">unchecked</span>'}
+                    <div style="flex:1"></div>
+                    <button class="btn btn-primary" onclick="startCheck(${c.id})" style="font-size:11px">Check Now</button>
+                    <button class="btn" onclick="go('checklist-detail',${c.id})" style="font-size:11px">View</button>
+                    <button class="btn btn-danger" onclick="deleteChecklist(${c.id})" style="font-size:11px">Delete</button>
+                </div>
+                ${c.last_checked ? '<div style="font-size:11px;color:#8b949e;margin-top:4px">Last checked: '+relTime(c.last_checked)+'</div>' : ''}
+                <div id="cl-progress-${c.id}"></div>
+            </div>
+        `).join('')}
+    `;
+}
+
+async function createChecklist() {
     const text = $('cl-articles')?.value?.trim();
     const name = $('cl-name')?.value?.trim() || 'Checklist';
     if (!text) { alert('Paste article list first'); return; }
-    const articles = text.split('\n').map(l => l.trim()).filter(Boolean);
-    const r = await api('api/users/'+uid+'/checklists', {method:'POST', body:{name, articles}});
+    const articles = text.split('\\n').map(l => l.trim()).filter(Boolean);
+    const r = await api('api/checklists', {method:'POST', body:{name, articles}});
     if (r.error) { alert(r.error); return; }
-    render();
-}
-
-async function runChecklist(clId) {
-    const r = await api('api/checklists/'+clId+'/check', {method:'POST'});
-    if (r.error) { alert(r.error); return; }
-    alert(`Checked ${r.checked} articles: ${r.found} found, ${r.missing} missing`);
     render();
 }
 
@@ -721,29 +720,55 @@ async function deleteChecklist(clId) {
     render();
 }
 
-async function viewChecklist(uid, clId) {
-    checklistViewId = clId;
-    detailTab = 'checklist-detail';
-    render();
+async function startCheck(clId) {
+    await api('api/checklists/'+clId+'/check', {method:'POST'});
+    // Start progress polling
+    if (pollTimers['cl'+clId]) clearInterval(pollTimers['cl'+clId]);
+    pollTimers['cl'+clId] = setInterval(async () => {
+        const s = await api('api/checklists/'+clId+'/check-status');
+        const box = $('cl-progress-'+clId) || $('cl-detail-progress');
+        if (box) {
+            if (s.running) {
+                box.innerHTML = `
+                    <div class="progress-bar-bg" style="margin-top:6px"><div class="progress-bar-fill" style="width:${s.pct}%"></div></div>
+                    <div style="font-size:11px;color:#58a6ff;margin-top:2px">
+                        Checking ${s.checked}/${s.total} — ${s.found} found, ${s.missing} missing — ${esc(trunc(s.current,40))} (${s.pct}%)
+                    </div>`;
+            } else {
+                box.innerHTML = `<div style="font-size:11px;color:#3fb950;margin-top:4px">Done: ${s.found} found, ${s.missing} missing</div>`;
+                clearInterval(pollTimers['cl'+clId]);
+                delete pollTimers['cl'+clId];
+                setTimeout(render, 1500);
+            }
+        }
+    }, 1000);
 }
 
-async function renderChecklistDetail(id) {
-    const cl = await api('api/checklists/'+checklistViewId);
-    if (cl.error) return '<div class="empty">'+esc(cl.error)+'</div>';
+async function renderChecklistView() {
+    const clId = userId;  // reusing userId for checklist ID via go()
+    checklistViewId = clId;
+    bc.innerHTML = `<a onclick="go('checklists')">Checklists</a> / ...`;
+
+    const [cl, status] = await Promise.all([
+        api('api/checklists/'+clId),
+        api('api/checklists/'+clId+'/check-status'),
+    ]);
+    if (cl.error) { app.innerHTML = '<div class="empty">'+esc(cl.error)+'</div>'; return; }
+
+    bc.innerHTML = `<a onclick="go('checklists')">Checklists</a> / ${esc(cl.name)}`;
 
     const found = cl.items.filter(i => i.status==='found');
     const missing = cl.items.filter(i => i.status==='missing');
-    const unchecked = cl.items.filter(i => i.status==='unchecked');
 
-    return `
+    app.innerHTML = `
         <div class="toolbar">
             <span style="font-weight:600">${esc(cl.name)}</span>
             <span class="badge badge-blue">${cl.items.length} articles</span>
             ${cl.last_checked ? `<span class="badge badge-green">${found.length} found</span><span class="badge badge-red">${missing.length} missing</span>` : ''}
             <div style="flex:1"></div>
-            <button class="btn btn-primary" onclick="runChecklistAndRefresh(${checklistViewId})">Check Now</button>
-            <button class="btn" onclick="detailTab='checklists';render()">Back to Checklists</button>
+            <button class="btn btn-primary" onclick="startCheck(${clId})">Check Now</button>
         </div>
+        <div id="cl-detail-progress"></div>
         <table class="data-table">
             <thead><tr>
                 <th style="width:60px">Status</th>
@@ -753,23 +778,28 @@ async function renderChecklistDetail(id) {
                 <th style="width:100px">Checked</th>
             </tr></thead>
             <tbody>
-                ${cl.items.map(i => `
+                ${cl.items.map(i => {
+                    // found_files is now [{file,user},...] or strings (legacy)
+                    const files = i.found_files || [];
+                    const fileDisplay = files.length > 0 ? files.map(f => {
+                        if (typeof f === 'object') return '<span class="tag">'+esc(trunc((f.file||'').replace(/_/g,' '),35))+'</span> <span class="muted" style="font-size:10px">'+esc(f.user)+'</span>';
+                        return '<span class="tag">'+esc(trunc(String(f).replace(/_/g,' '),35))+'</span>';
+                    }).join(' ') : '<span class="muted">-</span>';
+                    return `
                     <tr>
-                        <td><span class="badge ${i.status==='found'?'badge-green':i.status==='missing'?'badge-red':'badge-yellow'}">${i.status}</span></td>
-                        <td><a href="https://${esc(i.wiki)}/wiki/${encodeURIComponent(i.article_title)}" target="_blank" style="color:#58a6ff;text-decoration:none">${esc(i.article_title)}</a></td>
+                        <td><span class="badge ${i.status==='found'?'badge-green':i.status==='missing'?'badge-red':i.status==='error'?'badge-red':'badge-yellow'}">${i.status}</span></td>
+                        <td><a href="https://${esc(i.wiki)}/wiki/${encodeURIComponent(i.article_title.replace(/ /g,'_'))}" target="_blank" style="color:#58a6ff;text-decoration:none">${esc(i.article_title.replace(/_/g,' '))}</a></td>
                         <td class="muted">${esc(i.wiki)}</td>
-                        <td>${i.found_files.length>0 ? i.found_files.map(f=>'<span class="tag">'+esc(trunc(f,40))+'</span>').join(' ') : '<span class="muted">-</span>'}</td>
+                        <td>${fileDisplay}</td>
                         <td class="muted">${i.last_checked?relTime(i.last_checked):'-'}</td>
-                    </tr>
-                `).join('')}
+                    </tr>`;
+                }).join('')}
             </tbody>
         </table>
     `;
-}
 
-async function runChecklistAndRefresh(clId) {
-    await api('api/checklists/'+clId+'/check', {method:'POST'});
-    render();
+    // If check is running, start progress polling
+    if (status.running) startCheck(clId);
 }
 
 async function doMissingLangs() {
@@ -811,7 +841,10 @@ function pushState() {
     const state = {view, userId, photoId};
     const url = view === 'users' ? './' :
                 view === 'user-detail' ? `?user=${userId}` :
-                `?user=${userId}&photo=${photoId}`;
+                view === 'photo-detail' ? `?user=${userId}&photo=${photoId}` :
+                view === 'checklists' ? '?view=checklists' :
+                view === 'checklist-detail' ? `?view=checklist&id=${userId}` :
+                './';
     history.pushState(state, '', url);
 }
 
@@ -836,7 +869,12 @@ go = function(v, uid, pid) {
 // Handle initial URL params
 (function initFromUrl() {
     const params = new URLSearchParams(location.search);
-    if (params.get('photo') && params.get('user')) {
+    if (params.get('view') === 'checklists') {
+        view = 'checklists';
+    } else if (params.get('view') === 'checklist' && params.get('id')) {
+        view = 'checklist-detail';
+        userId = parseInt(params.get('id'));
+    } else if (params.get('photo') && params.get('user')) {
         view = 'photo-detail';
         userId = parseInt(params.get('user'));
         photoId = parseInt(params.get('photo'));
