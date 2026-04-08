@@ -293,8 +293,8 @@
 <header>
     <h1 style="cursor:pointer" onclick="go('users')">Photo<span>Post</span></h1>
     <div id="breadcrumb" class="breadcrumb"></div>
-    <div class="spacer"></div>
-    <button class="btn" onclick="go('checklists')" style="font-size:12px">Checklists</button>
+    <div style="flex:1"></div>
+    <button class="btn" onclick="go('checklists')" style="font-size:12px;margin-left:auto">Checklists</button>
 </header>
 
 <main id="app"></main>
@@ -455,7 +455,7 @@ async function renderUserDetail() {
                     ${photosData.photos.length===0 ? '<tr><td colspan="4" class="empty">No photos found</td></tr>' : ''}
                     ${photosData.photos.map(p => `
                         <tr class="clickable" onclick="go('photo-detail',${id},${p.id})">
-                            <td><img src="${esc(p.thumb_url)}" onerror="this.style.visibility='hidden'" loading="lazy"></td>
+                            <td><a href="https://commons.wikimedia.org/wiki/File:${encodeURIComponent(p.filename)}" target="_blank" onclick="event.stopPropagation()"><img src="${esc(p.thumb_url)}" onerror="this.style.visibility='hidden'" loading="lazy"></a></td>
                             <td>
                                 <div style="font-weight:500">${esc(trunc(p.filename,70))}</div>
                                 ${p.description?'<div style="color:#8b949e;font-size:11px">'+esc(trunc(p.description,80))+'</div>':''}
@@ -573,7 +573,7 @@ async function renderPhotoDetail() {
 
     app.innerHTML = `
         <div class="photo-header">
-            <img src="${esc(photo.thumb_url)}" onerror="this.style.visibility='hidden'">
+            <a href="https://commons.wikimedia.org/wiki/File:${encodeURIComponent(photo.filename)}" target="_blank"><img src="${esc(photo.thumb_url)}" onerror="this.style.visibility='hidden'"></a>
             <div class="photo-info">
                 <h2>${esc(photo.filename)}</h2>
                 ${photo.description?'<div class="desc">'+esc(photo.description)+'</div>':''}
@@ -776,6 +776,7 @@ async function renderChecklistView() {
                 <th style="width:180px">Wiki</th>
                 <th>Photos Found</th>
                 <th style="width:100px">Checked</th>
+                <th style="width:100px"></th>
             </tr></thead>
             <tbody>
                 ${cl.items.map(i => {
@@ -792,6 +793,7 @@ async function renderChecklistView() {
                         <td class="muted">${esc(i.wiki)}</td>
                         <td>${fileDisplay}</td>
                         <td class="muted">${i.last_checked?relTime(i.last_checked):'-'}</td>
+                        <td>${i.status==='missing'?`<button class="btn" style="font-size:10px;padding:2px 6px" onclick="checkHistory('${esc(i.wiki)}','${esc(i.article_title)}',this)">Check History</button>`:''}</td>
                     </tr>`;
                 }).join('')}
             </tbody>
@@ -800,6 +802,45 @@ async function renderChecklistView() {
 
     // If check is running, start progress polling
     if (status.running) startCheck(clId);
+}
+
+async function checkHistory(wiki, articleTitle, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Checking...';
+    const row = btn.closest('tr');
+    try {
+        const d = await api('api/check-removal', {
+            method: 'POST',
+            body: { wiki, article_title: articleTitle },
+        });
+        // Insert result row after current row
+        const resultRow = document.createElement('tr');
+        if (d.removals && d.removals.length > 0) {
+            resultRow.innerHTML = `<td colspan="6" style="background:#1c1210;padding:8px 10px;font-size:12px">
+                <div style="color:#f85149;font-weight:600;margin-bottom:4px">Photo removed from this article:</div>
+                ${d.removals.map(r => `
+                    <div style="margin-bottom:6px;padding:4px 0;border-bottom:1px solid #30363d">
+                        <span class="tag">${esc(r.file.replace(/_/g,' '))}</span>
+                        <span class="muted">(${esc(r.user)})</span><br>
+                        <span style="color:#f85149">Removed by</span> <strong>${esc(r.removed_by)}</strong>
+                        on ${new Date(r.removed_at).toLocaleString()}<br>
+                        <span class="muted">Comment: ${esc(r.edit_comment || 'none')}</span><br>
+                        <a href="${esc(r.diff_url)}" target="_blank" style="color:#58a6ff">View diff</a>
+                    </div>
+                `).join('')}
+                <div class="muted">${d.revisions_checked} revisions checked</div>
+            </td>`;
+        } else {
+            resultRow.innerHTML = `<td colspan="6" style="background:#161b22;padding:8px 10px;font-size:12px">
+                <span class="muted">No tracked photo removals found in last ${d.revisions_checked} revisions</span>
+            </td>`;
+        }
+        row.after(resultRow);
+        btn.style.display = 'none';
+    } catch (e) {
+        btn.textContent = 'Error';
+        btn.disabled = false;
+    }
 }
 
 async function doMissingLangs() {

@@ -600,6 +600,9 @@ def run_checklist(checklist_id):
                 api_url = f"https://{item.wiki}/w/api.php"
 
                 try:
+                    import re as _re
+
+                    # Method 1: prop=images (standard file references)
                     resp = client.get(api_url, params={
                         "action": "query",
                         "titles": item.article_title,
@@ -617,6 +620,30 @@ def run_checklist(checklist_id):
                             name = img.get("title", "").removeprefix("File:")
                             article_images.add(name)
                             article_images.add(name.replace(" ", "_"))
+
+                    # Method 2: scan wikitext for filenames (catches templates, galleries, etc.)
+                    resp2 = client.get(api_url, params={
+                        "action": "query",
+                        "titles": item.article_title,
+                        "prop": "revisions",
+                        "rvprop": "content",
+                        "rvslots": "main",
+                        "rvlimit": "1",
+                        "format": "json",
+                        "formatversion": "2",
+                    })
+                    data2 = resp2.json()
+                    pages2 = data2.get("query", {}).get("pages", [])
+                    if pages2 and not pages2[0].get("missing"):
+                        content = pages2[0].get("revisions", [{}])[0].get("slots", {}).get("main", {}).get("content", "")
+                        # Find [[File:X]] and [[Image:X]]
+                        for m in _re.findall(r'\[\[(?:File|Image):([^|\]]+)', content, _re.IGNORECASE):
+                            article_images.add(m.strip())
+                            article_images.add(m.strip().replace(" ", "_"))
+                        # Find |image=X.jpg or |photo=X.jpg in templates
+                        for m in _re.findall(r'\|[^=]*(?:image|photo|logo|cover|map_image|picture)\s*=\s*([^\n|}{]+\.(?:jpg|jpeg|png|svg|gif))', content, _re.IGNORECASE):
+                            article_images.add(m.strip())
+                            article_images.add(m.strip().replace(" ", "_"))
 
                     # Find which tracked photos are on this article
                     matched = []
@@ -677,6 +704,108 @@ def checklist_check_status(checklist_id):
         "current": prog.get("current", ""),
         "pct": int(prog["checked"] / max(prog["total"], 1) * 100),
     })
+
+
+# --- Article history check for removed photos ---
+
+@app.route("/api/check-removal", methods=["POST"])
+def check_removal():
+    """Check article revision history to find when/if a photo was removed.
+
+    Accepts JSON: { wiki, article_title }
+    Searches recent revisions for any tracked user photos that were removed.
+    """
+    import re
+    import httpx
+
+    data = request.get_json()
+    wiki = data.get("wiki", "en.wikipedia.org")
+    article_title = data.get("article_title", "").strip()
+    if not article_title:
+        return jsonify({"error": "article_title required"}), 400
+
+    api_url = f"https://{wiki}/w/api.php"
+    client = httpx.Client(headers={"User-Agent": "PhotoPost/1.0"}, timeout=15)
+
+    db = Session()
+    try:
+        # Get all tracked filenames (both space and underscore forms)
+        user_files = {}
+        for p in db.query(Photo).join(TrackedUser).all():
+            user_files[p.filename.lower()] = (p.filename, p.user.username)
+            user_files[p.filename.replace("_", " ").lower()] = (p.filename, p.user.username)
+    finally:
+        db.close()
+
+    def find_images_in_text(text):
+        """Find all image references in wikitext."""
+        found = set()
+        # [[File:Name.jpg|...]] and [[Image:Name.jpg|...]]
+        for m in re.findall(r'\[\[(?:File|Image):([^|\]]+)', text, re.IGNORECASE):
+            found.add(m.strip())
+        # |image= or |photo= or |logo= in templates
+        for m in re.findall(r'\|[^=]*(?:image|photo|logo|cover)\s*=\s*([^\n|}{]+\.(?:jpg|jpeg|png|svg|gif))', text, re.IGNORECASE):
+            found.add(m.strip())
+        return found
+
+    try:
+        # Get last 50 revisions with content
+        resp = client.get(api_url, params={
+            "action": "query",
+            "titles": article_title,
+            "prop": "revisions",
+            "rvprop": "ids|timestamp|user|comment|content",
+            "rvslots": "main",
+            "rvlimit": "50",
+            "format": "json",
+            "formatversion": "2",
+        })
+        data = resp.json()
+        pages = data.get("query", {}).get("pages", [])
+        if not pages or pages[0].get("missing"):
+            return jsonify({"error": "Article not found", "removals": []})
+
+        revisions = pages[0].get("revisions", [])
+        if not revisions:
+            return jsonify({"removals": [], "revisions_checked": 0})
+
+        # Walk through revisions (newest first) looking for image removals
+        removals = []
+        prev_images = None
+
+        for rev in revisions:
+            content = rev.get("slots", {}).get("main", {}).get("content", "")
+            current_images = find_images_in_text(content)
+
+            if prev_images is not None:
+                # Images in this (older) revision but not in the next (newer) one = removed
+                removed = current_images - prev_images
+                for img_name in removed:
+                    # Check if it's one of our tracked photos
+                    lookup = img_name.lower()
+                    if lookup in user_files:
+                        fname, uname = user_files[lookup]
+                        removals.append({
+                            "file": fname,
+                            "user": uname,
+                            "removed_in_rev": revisions[revisions.index(rev) - 1]["revid"],
+                            "removed_by": revisions[revisions.index(rev) - 1].get("user", ""),
+                            "removed_at": revisions[revisions.index(rev) - 1].get("timestamp", ""),
+                            "edit_comment": revisions[revisions.index(rev) - 1].get("comment", ""),
+                            "diff_url": f"https://{wiki}/w/index.php?diff={revisions[revisions.index(rev) - 1]['revid']}&oldid={rev['revid']}",
+                        })
+
+            prev_images = current_images
+
+        return jsonify({
+            "removals": removals,
+            "revisions_checked": len(revisions),
+            "article": article_title,
+            "wiki": wiki,
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e), "removals": []}), 502
 
 
 # --- Events feed ---
