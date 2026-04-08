@@ -596,22 +596,30 @@ def run_checklist(checklist_id):
             import re as _re
             import time as _time
 
-            client = httpx.Client(headers={"User-Agent": "PhotoPost/1.0"}, timeout=15.0)
+            client = httpx.Client(
+                headers={"User-Agent": "PhotoPost/1.0 (https://github.com/fossick-cyber/photopost)"},
+                timeout=20.0,
+            )
             now = datetime.now(timezone.utc)
             prog = _checklist_progress[checklist_id]
 
-            def _api_get(url, params, retries=3):
-                """GET with retry on empty/error responses."""
+            def _api_get(url, params, retries=5):
+                """GET with aggressive backoff on rate limiting."""
                 for attempt in range(retries):
                     try:
                         resp = client.get(url, params=params)
                         if resp.status_code == 200 and resp.text.strip():
                             return resp.json()
-                        # Rate limited or empty — wait and retry
-                        _time.sleep(1 + attempt)
+                        if resp.status_code == 429:
+                            # Rate limited — back off aggressively
+                            wait = int(resp.headers.get("Retry-After", 5 * (attempt + 1)))
+                            prog["current"] = f"Rate limited, waiting {wait}s..."
+                            _time.sleep(wait)
+                        else:
+                            _time.sleep(2 * (attempt + 1))
                     except Exception:
                         if attempt < retries - 1:
-                            _time.sleep(1 + attempt)
+                            _time.sleep(2 * (attempt + 1))
                         else:
                             raise
                 return {}
@@ -630,74 +638,120 @@ def run_checklist(checklist_id):
                         return name[len(ns):]
                 return name
 
+            def _match_images(article_images):
+                matched = []
+                seen = set()
+                for img_name in article_images:
+                    m = user_files.get(img_name) or user_files.get(img_name.lower())
+                    if m and img_name.lower() not in seen:
+                        matched.append({"file": m[0], "user": m[1]})
+                        seen.add(img_name.lower())
+                return matched
+
+            # Group items by wiki for batching
+            from collections import defaultdict
+            wiki_groups = defaultdict(list)
             for item in cl.items:
-                prog["current"] = item.article_title
-                api_url = f"https://{item.wiki}/w/api.php"
+                wiki_groups[item.wiki].append(item)
 
-                try:
-                    # Single API call: images + wikitext in one request
-                    data = _api_get(api_url, {
-                        "action": "query",
-                        "titles": item.article_title,
-                        "prop": "images|revisions",
-                        "imlimit": "500",
-                        "rvprop": "content",
-                        "rvslots": "main",
-                        "rvlimit": "1",
-                        "format": "json",
-                        "formatversion": "2",
-                    })
-                    pages = data.get("query", {}).get("pages", [])
+            for wiki, items_in_wiki in wiki_groups.items():
+                api_url = f"https://{wiki}/w/api.php"
 
-                    article_images = set()
-                    if pages and not pages[0].get("missing"):
-                        page = pages[0]
+                # Process in batches of 20 (conservative to avoid hitting image limits)
+                for batch_start in range(0, len(items_in_wiki), 20):
+                    batch = items_in_wiki[batch_start:batch_start + 20]
+                    titles = "|".join(item.article_title for item in batch)
+                    prog["current"] = f"{wiki} ({batch_start+1}-{min(batch_start+20, len(items_in_wiki))} of {len(items_in_wiki)})"
 
-                        # From prop=images
-                        for img in page.get("images", []):
-                            name = _strip_file_ns(img.get("title", ""))
-                            article_images.add(name)
-                            article_images.add(name.replace(" ", "_"))
+                    try:
+                        # Batch: fetch images for up to 20 articles at once
+                        data = _api_get(api_url, {
+                            "action": "query",
+                            "titles": titles,
+                            "prop": "images",
+                            "imlimit": "500",
+                            "format": "json",
+                            "formatversion": "2",
+                            "maxlag": "5",
+                        })
+                        pages = {p.get("title", ""): p for p in data.get("query", {}).get("pages", [])}
 
-                        # From wikitext
-                        revs = page.get("revisions", [])
-                        if revs:
-                            content = revs[0].get("slots", {}).get("main", {}).get("content", "")
+                        for item in batch:
+                            # Match page by title (handle normalization)
+                            page = pages.get(item.article_title) or pages.get(item.article_title.replace(" ", "_"))
+                            # Also try normalized titles from the API
+                            if not page:
+                                for norm in data.get("query", {}).get("normalized", []):
+                                    if norm.get("from") == item.article_title or norm.get("from") == item.article_title.replace(" ", "_"):
+                                        page = pages.get(norm.get("to"))
+                                        break
+
+                            article_images = set()
+                            if page and not page.get("missing"):
+                                for img in page.get("images", []):
+                                    name = _strip_file_ns(img.get("title", ""))
+                                    article_images.add(name)
+                                    article_images.add(name.replace(" ", "_"))
+
+                            matched = _match_images(article_images)
+                            item.status = "found" if matched else "missing"
+                            item.found_files = json.dumps(matched)
+                            item.last_checked = now
+                            if matched:
+                                prog["found"] += 1
+                            else:
+                                prog["missing"] += 1
+                            prog["checked"] += 1
+
+                    except Exception as e:
+                        import traceback
+                        traceback.print_exc()
+                        for item in batch:
+                            if not item.last_checked or item.last_checked < now:
+                                item.status = "error"
+                                item.last_checked = now
+                                prog["errors"] += 1
+                                prog["checked"] += 1
+
+                    check_db.commit()
+                    _time.sleep(1)  # 1s between batches
+
+                # Wikitext fallback: for items still "missing", try wikitext scan
+                missing_items = [i for i in items_in_wiki if i.status == "missing"]
+                for item in missing_items:
+                    prog["current"] = f"Wikitext check: {item.article_title}"
+                    try:
+                        data2 = _api_get(api_url, {
+                            "action": "query",
+                            "titles": item.article_title,
+                            "prop": "revisions",
+                            "rvprop": "content",
+                            "rvslots": "main",
+                            "rvlimit": "1",
+                            "format": "json",
+                            "formatversion": "2",
+                            "maxlag": "5",
+                        })
+                        pages2 = data2.get("query", {}).get("pages", [])
+                        if pages2 and not pages2[0].get("missing"):
+                            content = pages2[0].get("revisions", [{}])[0].get("slots", {}).get("main", {}).get("content", "")
+                            article_images = set()
                             for m in _re.findall(r'\[\[(?:' + _ns_pattern + r'):([^|\]]+)', content, _re.IGNORECASE):
                                 article_images.add(m.strip())
                                 article_images.add(m.strip().replace(" ", "_"))
                             for m in _re.findall(r'\|[^=]*(?:image|photo|logo|cover|map_image|picture)\s*=\s*([^\n|}{]+\.(?:jpg|jpeg|png|svg|gif))', content, _re.IGNORECASE):
                                 article_images.add(m.strip())
                                 article_images.add(m.strip().replace(" ", "_"))
-
-                    # Match against tracked photos
-                    matched = []
-                    seen = set()
-                    for img_name in article_images:
-                        match = user_files.get(img_name) or user_files.get(img_name.lower())
-                        if match and img_name.lower() not in seen:
-                            fname, uname = match
-                            matched.append({"file": fname, "user": uname})
-                            seen.add(img_name.lower())
-
-                    item.status = "found" if matched else "missing"
-                    item.found_files = json.dumps(matched)
-                    item.last_checked = now
-
-                    if matched:
-                        prog["found"] += 1
-                    else:
-                        prog["missing"] += 1
-                except Exception as e:
-                    import traceback
-                    traceback.print_exc()
-                    item.status = "error"
-                    item.last_checked = now
-                    prog["errors"] += 1
-
-                prog["checked"] += 1
-                check_db.commit()
-                _time.sleep(0.2)
+                            matched = _match_images(article_images)
+                            if matched:
+                                item.status = "found"
+                                item.found_files = json.dumps(matched)
+                                prog["found"] += 1
+                                prog["missing"] -= 1
+                        check_db.commit()
+                    except Exception:
+                        pass
+                    _time.sleep(0.5)
 
             cl.last_checked = now
             check_db.commit()
