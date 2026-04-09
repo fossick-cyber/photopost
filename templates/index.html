@@ -292,16 +292,16 @@
 <body>
 <header>
     <h1 style="cursor:pointer" onclick="go('users')">Photo<span>Post</span></h1>
+    <button class="btn" onclick="go('checklists')" style="font-size:12px">Checklists</button>
     <div id="breadcrumb" class="breadcrumb"></div>
     <div style="flex:1"></div>
-    <button class="btn" onclick="go('checklists')" style="font-size:12px;margin-left:auto">Checklists</button>
 </header>
 
 <main id="app"></main>
 
 <script>
 let view = 'users', userId = null, photoId = null;
-let detailSort = 'usages', detailPage = 1, detailSearch = '';
+let detailSort = 'usages', detailPage = 1, detailSearch = '', showHidden = false;
 let detailTab = 'photos';
 let usagePage = 1;
 let pollTimers = {};
@@ -421,7 +421,8 @@ async function renderUserDetail() {
     let tabContent = '';
     if (detailTab === 'photos') {
         const q = detailSearch ? '&q='+encodeURIComponent(detailSearch) : '';
-        const photosData = await api(`api/users/${id}/photos?page=${detailPage}&per_page=50&sort=${detailSort}${q}`);
+        const hiddenParam = showHidden ? '&show_hidden=1' : '';
+        const photosData = await api(`api/users/${id}/photos?page=${detailPage}&per_page=50&sort=${detailSort}${q}${hiddenParam}`);
         bc.innerHTML = `<a onclick="go('users')">Users</a> / ${esc(photosData.username)}`;
         const tp = photosData.pages;
 
@@ -436,6 +437,9 @@ async function renderUserDetail() {
         tabContent = `
             <div class="toolbar">
                 <input type="text" id="search-box" placeholder="Search filenames..." value="${esc(detailSearch)}" style="width:250px">
+                <label style="font-size:11px;color:#8b949e;display:flex;align-items:center;gap:4px;cursor:pointer">
+                    <input type="checkbox" ${showHidden?'checked':''} onchange="showHidden=this.checked;detailPage=1;render()"> Show hidden
+                </label>
                 <div class="spacer" style="flex:1"></div>
                 <div class="pager">
                     <span class="count">${photosData.total.toLocaleString()} photos</span>
@@ -446,22 +450,26 @@ async function renderUserDetail() {
             </div>
             <table class="data-table">
                 <thead><tr>
+                    <th style="width:30px"></th>
                     <th style="width:48px"></th>
                     ${thSort('name','Filename','')}
                     ${thSort('usages','Usages','90px')}
                     ${thSort('date','Uploaded','100px')}
+                    <th style="width:50px"></th>
                 </tr></thead>
                 <tbody>
-                    ${photosData.photos.length===0 ? '<tr><td colspan="4" class="empty">No photos found</td></tr>' : ''}
+                    ${photosData.photos.length===0 ? '<tr><td colspan="6" class="empty">No photos found</td></tr>' : ''}
                     ${photosData.photos.map(p => `
-                        <tr class="clickable" onclick="go('photo-detail',${id},${p.id})">
-                            <td><a href="https://commons.wikimedia.org/wiki/File:${encodeURIComponent(p.filename)}" target="_blank" onclick="event.stopPropagation()"><img src="${esc(p.thumb_url)}" onerror="this.style.visibility='hidden'" loading="lazy"></a></td>
+                        <tr class="clickable" style="${p.hidden?'opacity:0.4':''}" onclick="go('photo-detail',${id},${p.id})">
+                            <td onclick="event.stopPropagation()"><input type="checkbox" ${p.worked_on?'checked':''} onchange="togglePhotoField(${p.id},'worked_on',this.checked)" title="Worked on"></td>
+                            <td><a href="https://commons.wikimedia.org/wiki/File:${encodeURIComponent(p.filename)}" target="_blank" onclick="event.stopPropagation()" style="display:inline-block"><img src="${esc(p.thumb_url)}" onerror="this.alt='!'" loading="lazy" style="display:block"></a></td>
                             <td>
                                 <div style="font-weight:500">${esc(trunc(p.filename,70))}</div>
                                 ${p.description?'<div style="color:#8b949e;font-size:11px">'+esc(trunc(p.description,80))+'</div>':''}
                             </td>
                             <td class="num"><span class="badge ${p.usage_count===0?'badge-yellow':'badge-blue'}">${p.usage_count.toLocaleString()}</span></td>
                             <td class="muted">${p.upload_date?new Date(p.upload_date).toLocaleDateString():''}</td>
+                            <td onclick="event.stopPropagation()"><button class="btn" style="font-size:10px;padding:1px 5px" onclick="togglePhotoField(${p.id},'hidden',${!p.hidden})" title="${p.hidden?'Unhide':'Hide'}">${p.hidden?'Show':'Hide'}</button></td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -559,6 +567,11 @@ function toggleSort(field) {
 
 async function pollDetail(id) { await api('api/users/'+id+'/poll',{method:'POST'}); render(); }
 
+async function togglePhotoField(photoId, field, value) {
+    await api('api/photos/'+photoId+'/update', {method:'POST', body:{[field]:value}});
+    if (field === 'hidden' && !showHidden) render(); // re-render to remove from list
+}
+
 // ─── Photo Detail ───
 async function renderPhotoDetail() {
     const pid = photoId;
@@ -589,6 +602,10 @@ async function renderPhotoDetail() {
                 </div>
                 <div style="margin-top:8px">
                     <a href="https://commons.wikimedia.org/wiki/File:${encodeURIComponent(photo.filename)}" target="_blank" class="btn">View on Commons</a>
+                    <label style="font-size:12px;display:inline-flex;align-items:center;gap:4px;margin-left:8px;cursor:pointer;color:#8b949e">
+                        <input type="checkbox" ${photo.worked_on?'checked':''} onchange="togglePhotoField(${pid},'worked_on',this.checked)"> Worked on
+                    </label>
+                    <button class="btn" style="font-size:11px;margin-left:4px" onclick="togglePhotoField(${pid},'hidden',${!photo.hidden});render()">${photo.hidden?'Unhide':'Hide photo'}</button>
                     <button class="btn btn-primary" id="suggest-btn" onclick="doSuggest(${pid})">AI Suggest (10)</button>
                     <button class="btn" id="missing-btn" onclick="doMissingLangs()">Find Missing Languages</button>
                 </div>

@@ -197,6 +197,11 @@ def user_photos(user_id):
             .filter(Photo.user_id == user_id)
         )
 
+        # Filter hidden unless explicitly requested
+        show_hidden = request.args.get("show_hidden", "0") == "1"
+        if not show_hidden:
+            query = query.filter(Photo.hidden == False)
+
         if search:
             query = query.filter(Photo.filename.ilike(f"%{search}%"))
 
@@ -227,6 +232,8 @@ def user_photos(user_id):
                 "thumb_url": _fix_thumb(p.thumb_url, p.filename),
                 "upload_date": p.upload_date.isoformat() if p.upload_date else None,
                 "usage_count": ucount,
+                "hidden": p.hidden or False,
+                "worked_on": p.worked_on or False,
             })
         return jsonify({
             "username": user.username,
@@ -236,6 +243,24 @@ def user_photos(user_id):
             "per_page": per_page,
             "pages": max(1, (total + per_page - 1) // per_page),
         })
+    finally:
+        db.close()
+
+
+@app.route("/api/photos/<int:photo_id>/update", methods=["POST"])
+def update_photo(photo_id):
+    db = Session()
+    try:
+        photo = db.get(Photo, photo_id)
+        if not photo:
+            return jsonify({"error": "Not found"}), 404
+        data = request.get_json()
+        if "hidden" in data:
+            photo.hidden = bool(data["hidden"])
+        if "worked_on" in data:
+            photo.worked_on = bool(data["worked_on"])
+        db.commit()
+        return jsonify({"ok": True, "hidden": photo.hidden, "worked_on": photo.worked_on})
     finally:
         db.close()
 
@@ -293,6 +318,8 @@ def photo_detail(photo_id):
             "full_url": photo.full_url,
             "upload_date": photo.upload_date.isoformat() if photo.upload_date else None,
             "categories": json.loads(photo.categories) if photo.categories else [],
+            "hidden": photo.hidden or False,
+            "worked_on": photo.worked_on or False,
             "active_total": active_total,
             "removed_count": removed_count,
             "usage_page": usage_page,

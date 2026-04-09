@@ -45,6 +45,8 @@ class Photo(Base):
     mime_type = Column(String(100), default="")
     categories = Column(Text, default="")  # JSON array stored as text
     first_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    hidden = Column(Boolean, default=False)
+    worked_on = Column(Boolean, default=False)
 
     user = relationship("TrackedUser", back_populates="photos")
     usages = relationship("PhotoUsage", back_populates="photo", cascade="all, delete-orphan")
